@@ -94,7 +94,7 @@ def extract_keywords(text: str) -> List[str]:
             print(f"OpenAI 키워드 추출 중 오류 발생 (기본 추출은 진행됨): {e}")
 
     # 최종적으로 찾은 키워드들을 리스트로 변환하여 반환
-    return sorted(list(found_keywords))[:8]
+    return sorted(list(found_keywords))[:20]
 
 def extract_simple_keywords(text: str) -> List[str]:
     """간단한 키워드 추출 (백업 방식) - Whitelist 기반"""
@@ -104,4 +104,4 @@ def extract_simple_keywords(text: str) -> List[str]:
         if keyword.lower() in text_lower:
             keywords.add(keyword)
     
-    return sorted(list(keywords))[:8]
+    return sorted(list(keywords))[:20]
