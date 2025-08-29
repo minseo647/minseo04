@@ -275,6 +275,105 @@ class NewsService {
     return now - updateTime < this.CACHE_DURATION;
   }
 
+  // 워드프레스 피드인지 확인
+  private isWordPressFeed(url: string): boolean {
+    return /\/feed\/?$/i.test(url);
+  }
+
+  // 페이지네이션을 지원하는 RSS 수집
+  private async collectFromFeedWithPagination(feed: any): Promise<Article[]> {
+    const allArticles: Article[] = [];
+    const maxPages = this.isWordPressFeed(feed.feed_url) ? 5 : 1; // 워드프레스는 5페이지, 나머지는 1페이지
+    const seenLinks = new Set<string>();
+
+    for (let page = 1; page <= maxPages; page++) {
+      try {
+        let feedUrl = feed.feed_url;
+        
+        // 워드프레스 피드인 경우 페이지네이션 추가
+        if (page > 1 && this.isWordPressFeed(feed.feed_url)) {
+          const separator = feedUrl.includes('?') ? '&' : '?';
+          feedUrl = `${feedUrl}${separator}paged=${page}`;
+        }
+
+        console.log(`📄 ${feed.source} page ${page}: ${feedUrl}`);
+
+        // RSS2JSON API로 수집
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(
+          `${RSS_API.url}?rss_url=${encodeURIComponent(feedUrl)}&count=50&api_key=`,
+          { 
+            signal: controller.signal,
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)'
+            }
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.status === 'ok' && data.items && data.items.length > 0) {
+            let pageArticles = 0;
+            
+            for (const item of data.items) {
+              const link = item.link || item.url || '';
+              
+              // 중복 확인
+              if (!link || seenLinks.has(link)) {
+                continue;
+              }
+              seenLinks.add(link);
+
+              allArticles.push({
+                id: this.nextId++,
+                title: this.cleanTitle(item.title || ''),
+                link: link,
+                published: this.parseDate(item.pubDate || item.published) || new Date().toISOString(),
+                source: feed.source,
+                summary: this.cleanSummary(item.description || item.content || ''),
+                keywords: this.extractKeywords(
+                  (item.title || '') + ' ' + 
+                  (item.description || item.content || '') + ' ' + 
+                  (item.categories?.join(' ') || '')
+                ),
+                is_favorite: false
+              });
+              pageArticles++;
+            }
+            
+            console.log(`✅ ${feed.source} page ${page}: ${pageArticles}개 기사 추가`);
+            
+            // 워드프레스가 아니거나 기사가 적으면 중단
+            if (!this.isWordPressFeed(feed.feed_url) || pageArticles < 10) {
+              break;
+            }
+          } else {
+            console.warn(`${feed.source} page ${page}: RSS2JSON 응답 오류`);
+            break;
+          }
+        } else {
+          console.warn(`${feed.source} page ${page}: HTTP 오류 ${response.status}`);
+          break;
+        }
+
+        // 페이지 간 간격
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+      } catch (error) {
+        console.warn(`${feed.source} page ${page} 실패:`, error instanceof Error ? error.message : error);
+        break;
+      }
+    }
+
+    return allArticles;
+  }
+
   // 웹 스크래핑을 통한 뉴스 수집
   private async scrapeWebSources(): Promise<Article[]> {
     console.log('🕷️ Web scraping 시도 중... (CORS 제한으로 인해 제한적 수집)');
@@ -345,7 +444,7 @@ class NewsService {
     return articles;
   }
 
-  // RSS + 웹 스크래핑 하이브리드 뉴스 수집
+  // RSS + 페이지네이션을 통한 대량 뉴스 수집
   async collectNews(maxFeeds: number = 35): Promise<Article[]> {
     const allArticles: Article[] = [];
     const successfulFeeds: string[] = [];
@@ -354,79 +453,22 @@ class NewsService {
     // 프로미스 배치 처리로 동시 수집
     const feedPromises = FEEDS.slice(0, maxFeeds).map(async (feed) => {
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
+        console.log(`🔄 ${feed.source}: 페이지네이션 수집 시작...`);
         
-        // Use only RSS2JSON API (much faster and reliable)
-        let articles: any[] = [];
+        const feedArticles = await this.collectFromFeedWithPagination(feed);
         
-        try {
-          console.log(`🔄 ${feed.source}: RSS2JSON API 시도 중...`);
-          
-          const response = await fetch(
-            `${RSS_API.url}?rss_url=${encodeURIComponent(feed.feed_url)}&count=100&api_key=`,
-            { 
-              signal: controller.signal,
-              headers: {
-                'Accept': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)'
-              }
-            }
-          );
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.status === 'ok' && data.items && data.items.length > 0) {
-              articles = data.items.slice(0, 100); // Increased from 50 to 100
-            }
-          }
-        } catch (apiError) {
-          console.warn(`RSS2JSON API 실패 (${feed.source}):`, apiError instanceof Error ? apiError.message : apiError);
-        }
-        
-        clearTimeout(timeoutId);
-        
-        // 마지막으로 수집된 기사 수 확인
-        
-        if (articles && articles.length > 0) {
-          const processedArticles = articles.map((item: any) => ({
-            id: this.nextId++,
-            title: this.cleanTitle(item.title || ''),
-            link: item.link || item.url || '',
-            published: this.parseDate(item.pubDate || item.published) || new Date().toISOString(),
-            source: feed.source,
-            summary: this.cleanSummary(item.description || item.content || ''),
-            keywords: this.extractKeywords(
-              (item.title || '') + ' ' + 
-              (item.description || item.content || '') + ' ' + 
-              (item.categories?.join(' ') || '')
-            ),
-            is_favorite: false,
-            category: feed.category,
-            language: feed.lang
-          }));
-          
-          console.log(`✅ ${feed.source}: ${processedArticles.length}개 기사 수집 성공`);
+        if (feedArticles.length > 0) {
+          console.log(`✅ ${feed.source}: ${feedArticles.length}개 기사 수집 성공`);
           successfulFeeds.push(feed.source);
-          return processedArticles;
+          return feedArticles;
         } else {
-          console.warn(`${feed.source}: 모든 API에서 데이터 수집 실패`);
+          console.warn(`${feed.source}: 데이터 수집 실패`);
           throw new Error(`No valid data from ${feed.source}`);
         }
       } catch (error) {
         failedFeeds.push(feed.source);
         const errorMsg = error instanceof Error ? error.message : String(error);
         console.warn(`❌ ${feed.source} 전체 실패:`, errorMsg);
-        
-        // 에러 유형 분류
-        if (errorMsg.includes('CORS') || errorMsg.includes('blocked')) {
-          console.warn(`🔄 ${feed.source}: CORS 정책으로 인한 차단`);
-        } else if (errorMsg.includes('timeout') || errorMsg.includes('aborted')) {
-          console.warn(`⏱️ ${feed.source}: 요청 시간 초과`);
-        } else if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-          console.warn(`🌐 ${feed.source}: 네트워크 연결 오류`);
-        }
-        
         return [];
       }
     });
@@ -445,13 +487,13 @@ class NewsService {
       index === self.findIndex(a => a.link === article.link)
     );
 
-    console.log(`📊 RSS 수집 완료: ${uniqueArticles.length}건 (성공: ${successfulFeeds.length}, 실패: ${failedFeeds.length})`);
+    console.log(`📊 RSS 페이지네이션 수집 완료: ${uniqueArticles.length}건 (성공: ${successfulFeeds.length}, 실패: ${failedFeeds.length})`);
     console.log(`✅ 성공 소스: ${successfulFeeds.join(', ')}`);
     if (failedFeeds.length > 0) {
       console.log(`❌ 실패 소스: ${failedFeeds.join(', ')}`);
     }
 
-    // 웹 스크래핑으로 추가 기사 수집
+    // 웹 스크래핑으로 추가 기사 수집 (제한적)
     try {
       const scrapedArticles = await this.scrapeWebSources();
       uniqueArticles.push(...scrapedArticles);
@@ -466,7 +508,7 @@ class NewsService {
     );
 
     // 수집된 기사가 너무 적을 경우 샘플 데이터 추가
-    if (finalUniqueArticles.length < 10) {
+    if (finalUniqueArticles.length < 50) {
       console.log('⚠️ 수집된 기사가 부족하여 샘플 데이터를 추가합니다.');
       const sampleData = this.generateSampleData();
       finalUniqueArticles.push(...sampleData);
