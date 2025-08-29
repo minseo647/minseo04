@@ -1166,13 +1166,26 @@ async def generate_wordcloud(
         cursor = conn.cursor()
         
         # 최근 기사들의 키워드 수집
-        cursor.execute("""
-            SELECT keywords FROM articles 
-            WHERE keywords IS NOT NULL 
-            AND created_at >= NOW() - INTERVAL '30 days'
-            ORDER BY created_at DESC 
-            LIMIT %s
-        """, (limit * 2,))
+        if db.db_type == "postgresql":
+            query = """
+                SELECT keywords FROM articles 
+                WHERE keywords IS NOT NULL 
+                AND created_at >= NOW() - INTERVAL '30 days'
+                ORDER BY created_at DESC 
+                LIMIT %s
+            """
+            params = (limit * 2,)
+        else: # sqlite
+            query = """
+                SELECT keywords FROM articles 
+                WHERE keywords IS NOT NULL 
+                AND created_at >= datetime('now', '-30 days')
+                ORDER BY created_at DESC 
+                LIMIT ?
+            """
+            params = (limit * 2,)
+
+        cursor.execute(query, params)
         
         results = cursor.fetchall()
         conn.close()
