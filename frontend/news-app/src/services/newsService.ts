@@ -66,6 +66,40 @@ const RSS_API = {
   url: "https://api.rss2json.com/v1/api.json",
 };
 
+// Web scraping endpoints for major news sites (using AllOrigins as proxy)
+const SCRAPING_SOURCES = [
+  // Korean sites with archive/search pages
+  { 
+    name: "IT동아_아카이브", 
+    url: "https://it.donga.com/search/?query=AI&page=", 
+    source: "IT동아_아카이브", 
+    lang: "ko",
+    pages: 5 // Scrape 5 pages
+  },
+  { 
+    name: "전자신문_검색", 
+    url: "https://www.etnews.com/search?query=IT&page=", 
+    source: "전자신문_검색", 
+    lang: "ko",
+    pages: 3
+  },
+  { 
+    name: "보안뉴스_아카이브", 
+    url: "https://www.boannews.com/media/search.asp?search_key=보안&page=", 
+    source: "보안뉴스_아카이브", 
+    lang: "ko",
+    pages: 5
+  },
+  // Global sites
+  { 
+    name: "TechCrunch_아카이브", 
+    url: "https://techcrunch.com/category/startups/page/", 
+    source: "TechCrunch_아카이브", 
+    lang: "en",
+    pages: 3
+  }
+];
+
 class NewsService {
   private articles: Article[] = [];
   private nextId = 1;
@@ -221,7 +255,88 @@ class NewsService {
     return now - updateTime < this.CACHE_DURATION;
   }
 
-  // RSS 피드에서 뉴스 수집 (개선된 버전)
+  // 웹 스크래핑을 통한 뉴스 수집
+  private async scrapeWebSources(): Promise<Article[]> {
+    const scrapedArticles: Article[] = [];
+    
+    console.log('🕷️ Starting web scraping for additional articles...');
+    
+    for (const source of SCRAPING_SOURCES) {
+      try {
+        console.log(`🔍 Scraping ${source.name}...`);
+        
+        for (let page = 1; page <= source.pages; page++) {
+          try {
+            const url = source.url + page;
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+            
+            const response = await fetch(proxyUrl, {
+              headers: { 'Accept': 'application/json' }
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.contents) {
+                const articles = this.parseArticlesFromHTML(data.contents, source.source);
+                scrapedArticles.push(...articles);
+                console.log(`✅ ${source.name} page ${page}: ${articles.length}개 기사 추출`);
+                
+                // Rate limiting
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+          } catch (pageError) {
+            console.warn(`❌ ${source.name} page ${page} 실패:`, pageError);
+            continue;
+          }
+        }
+      } catch (sourceError) {
+        console.warn(`❌ ${source.name} 전체 실패:`, sourceError);
+        continue;
+      }
+    }
+    
+    console.log(`🕷️ Web scraping completed: ${scrapedArticles.length} articles`);
+    return scrapedArticles;
+  }
+
+  // HTML에서 기사 정보 파싱
+  private parseArticlesFromHTML(html: string, source: string): Article[] {
+    const articles: Article[] = [];
+    
+    try {
+      // Basic article extraction using common patterns
+      const titleRegex = /<a[^>]*title="([^"]+)"[^>]*>|<h[1-6][^>]*>([^<]+)</g;
+      const linkRegex = /<a[^>]*href="([^"]+)"[^>]*>/g;
+      
+      const titles = [...html.matchAll(titleRegex)];
+      const links = [...html.matchAll(linkRegex)];
+      
+      for (let i = 0; i < Math.min(titles.length, links.length, 20); i++) {
+        const title = (titles[i][1] || titles[i][2] || '').trim();
+        const link = links[i][1];
+        
+        if (title && link && title.length > 10) {
+          articles.push({
+            id: this.nextId++,
+            title: this.cleanTitle(title),
+            link: link.startsWith('http') ? link : `https://${source}${link}`,
+            published: new Date().toISOString(),
+            source: source,
+            summary: `${source}에서 스크래핑한 기사입니다.`,
+            keywords: this.extractKeywords(title),
+            is_favorite: false
+          });
+        }
+      }
+    } catch (error) {
+      console.warn(`HTML 파싱 실패 (${source}):`, error);
+    }
+    
+    return articles;
+  }
+
+  // RSS + 웹 스크래핑 하이브리드 뉴스 수집
   async collectNews(maxFeeds: number = 12): Promise<Article[]> {
     const allArticles: Article[] = [];
     const successfulFeeds: string[] = [];
@@ -240,7 +355,7 @@ class NewsService {
           console.log(`🔄 ${feed.source}: RSS2JSON API 시도 중...`);
           
           const response = await fetch(
-            `${RSS_API.url}?rss_url=${encodeURIComponent(feed.feed_url)}&count=15&api_key=`,
+            `${RSS_API.url}?rss_url=${encodeURIComponent(feed.feed_url)}&count=50&api_key=`,
             { 
               signal: controller.signal,
               headers: {
@@ -253,7 +368,7 @@ class NewsService {
           if (response.ok) {
             const data = await response.json();
             if (data.status === 'ok' && data.items && data.items.length > 0) {
-              articles = data.items.slice(0, 15);
+              articles = data.items.slice(0, 50); // Increased from 15 to 50
             }
           }
         } catch (apiError) {
@@ -327,16 +442,30 @@ class NewsService {
       console.log(`❌ 실패 소스: ${failedFeeds.join(', ')}`);
     }
 
-    // 수집된 기사가 너무 적을 경우 샘플 데이터 추가
-    if (uniqueArticles.length < 3) {
-      console.log('⚠️ 수집된 기사가 부족하여 샘플 데이터를 추가합니다.');
-      const sampleData = this.generateSampleData();
-      uniqueArticles.push(...sampleData);
+    // 웹 스크래핑으로 추가 기사 수집
+    try {
+      const scrapedArticles = await this.scrapeWebSources();
+      uniqueArticles.push(...scrapedArticles);
+      console.log(`🔄 하이브리드 수집 완료: RSS ${uniqueArticles.length - scrapedArticles.length}건 + 스크래핑 ${scrapedArticles.length}건`);
+    } catch (scrapingError) {
+      console.warn('웹 스크래핑 실패:', scrapingError);
     }
 
-    this.articles = uniqueArticles;
+    // 최종 중복 제거
+    const finalUniqueArticles = uniqueArticles.filter((article, index, self) => 
+      index === self.findIndex(a => a.link === article.link || a.title === article.title)
+    );
+
+    // 수집된 기사가 너무 적을 경우 샘플 데이터 추가
+    if (finalUniqueArticles.length < 10) {
+      console.log('⚠️ 수집된 기사가 부족하여 샘플 데이터를 추가합니다.');
+      const sampleData = this.generateSampleData();
+      finalUniqueArticles.push(...sampleData);
+    }
+
+    this.articles = finalUniqueArticles;
     this.saveToStorage(); // 로컬스토리지에 저장
-    return uniqueArticles;
+    return finalUniqueArticles;
   }
 
   // 제목 정리
