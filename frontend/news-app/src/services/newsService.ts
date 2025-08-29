@@ -52,21 +52,11 @@ const FEEDS = [
   { feed_url: "https://www.reuters.com/technology/feed/", source: "Reuters Tech", category: "Tech", lang: "en" },
 ];
 
-// 다양한 RSS 파싱 API를 사용하여 안정성 향상
-const RSS_APIS = [
-  {
-    name: "RSS2JSON",
-    url: "https://api.rss2json.com/v1/api.json",
-  },
-  {
-    name: "AllOrigins", 
-    url: "https://api.allorigins.win/get",
-  },
-  {
-    name: "ThingProxy",
-    url: "https://thingproxy.freeboard.io/fetch",
-  }
-];
+// Only use working RSS2JSON API for now (other APIs have timeout/SSL issues)
+const RSS_API = {
+  name: "RSS2JSON",
+  url: "https://api.rss2json.com/v1/api.json",
+};
 
 class NewsService {
   private articles: Article[] = [];
@@ -235,78 +225,31 @@ class NewsService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
         
-        // 여러 API를 순차적으로 시도 (강화된 오류 처리)
+        // Use only RSS2JSON API (much faster and reliable)
         let articles: any[] = [];
-        let lastError = null;
         
-        for (let apiIndex = 0; apiIndex < RSS_APIS.length; apiIndex++) {
-          const api = RSS_APIS[apiIndex];
-          try {
-            console.log(`🔄 ${feed.source}: ${api.name} API 시도 중...`);
-            
-            let response;
-            let data;
-            
-            if (api.name === 'RSS2JSON') {
-              response = await fetch(
-                `${api.url}?rss_url=${encodeURIComponent(feed.feed_url)}&count=15&api_key=`,
-                { 
-                  signal: controller.signal,
-                  headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)'
-                  }
-                }
-              );
-              
-              if (response.ok) {
-                data = await response.json();
-                if (data.status === 'ok' && data.items && data.items.length > 0) {
-                  articles = data.items.slice(0, 15);
-                  break; // 성공시 루프 탈출
-                }
-              }
-            } else if (api.name === 'AllOrigins') {
-              response = await fetch(
-                `${api.url}?url=${encodeURIComponent(feed.feed_url)}`,
-                { 
-                  signal: controller.signal,
-                  headers: {
-                    'Accept': 'application/json'
-                  }
-                }
-              );
-              
-              if (response.ok) {
-                data = await response.json();
-                if (data.contents) {
-                  articles = this.parseRSSFromXML(data.contents, feed.source);
-                  if (articles.length > 0) break;
-                }
-              }
-            } else if (api.name === 'ThingProxy') {
-              response = await fetch(
-                `${api.url}/${encodeURIComponent(feed.feed_url)}`,
-                { 
-                  signal: controller.signal,
-                  headers: {
-                    'Accept': 'text/xml,application/xml,application/rss+xml'
-                  }
-                }
-              );
-              
-              if (response.ok) {
-                const xmlText = await response.text();
-                articles = this.parseRSSFromXML(xmlText, feed.source);
-                if (articles.length > 0) break;
+        try {
+          console.log(`🔄 ${feed.source}: RSS2JSON API 시도 중...`);
+          
+          const response = await fetch(
+            `${RSS_API.url}?rss_url=${encodeURIComponent(feed.feed_url)}&count=15&api_key=`,
+            { 
+              signal: controller.signal,
+              headers: {
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)'
               }
             }
-            
-          } catch (apiError) {
-            lastError = apiError;
-            console.warn(`${api.name} API 실패 (${feed.source}):`, apiError instanceof Error ? apiError.message : apiError);
-            continue; // 다음 API 시도
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'ok' && data.items && data.items.length > 0) {
+              articles = data.items.slice(0, 15);
+            }
           }
+        } catch (apiError) {
+          console.warn(`RSS2JSON API 실패 (${feed.source}):`, apiError instanceof Error ? apiError.message : apiError);
         }
         
         clearTimeout(timeoutId);
