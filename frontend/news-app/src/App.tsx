@@ -380,14 +380,9 @@ export default function App() {
           setKeywordStats(keywordStats);
         }
         
-        // Collections can still try backend API (optional feature)
-        try {
-          const collectionsData = await newsApi.getCollections();
-          setCollections(collectionsData);
-        } catch (collectionsError) {
-          console.warn('Collections not available (backend issue):', collectionsError);
-          setCollections([]);
-        }
+        // Skip collections for now (backend not available)
+        setCollections([]);
+        console.log('📁 Collections disabled (backend not available)');
       } catch (error) {
         console.error('Failed to load initial data:', error);
         // Fallback to empty state
@@ -484,15 +479,8 @@ export default function App() {
           console.error('Failed to update keywords:', keywordsError);
         }
         
-        // Update collections if they exist
-        try {
-          console.log('📁 Reloading collections...');
-          const collectionsData = await newsApi.getCollections();
-          setCollections(collectionsData);
-          console.log(`✅ Loaded ${collectionsData.length} collections`);
-        } catch (collectionsError) {
-          console.warn('Collections not available:', collectionsError);
-        }
+        // Skip collections update (backend not available)
+        console.log('📁 Collections update skipped (backend not available)');
         
       } else {
         console.warn('No articles collected');
@@ -562,48 +550,22 @@ export default function App() {
     const rules = keywords ? { include_keywords: keywords.split(',').map(k => k.trim()) } : {};
     
     try {
-      await newsApi.createCollection(name, rules);
-      const updatedCollections = await newsApi.getCollections();
-      setCollections(updatedCollections);
-      alert(`컬렉션 '${name}'이 생성되었습니다!`);
+      // Collections feature disabled (backend not available)
+      alert(`컬렉션 기능은 현재 사용할 수 없습니다 (백엔드 연결 필요).`);
     } catch (error) {
       console.error('Failed to create collection:', error);
       alert('컬렉션 생성에 실패했습니다.');
     }
   };
 
-  // 키워드 추출
+  // 키워드 추출 (백엔드 기능 비활성화)
   const handleExtractKeywords = async (articleId: number) => {
-    try {
-      const result = await newsApi.extractKeywords(articleId);
-      // Update the article with new keywords
-      setArticles(prev => prev.map(a => 
-        a.id === articleId ? { ...a, keywords: result.keywords } : a
-      ));
-      alert('키워드 추출이 완료되었습니다!');
-    } catch (error) {
-      console.error('Failed to extract keywords:', error);
-    }
+    alert('키워드 추출 기능은 현재 사용할 수 없습니다 (백엔드 연결 필요).');
   };
 
-  // 번역
+  // 번역 (백엔드 기능 비활성화)
   const handleTranslate = async (articleId: number) => {
-    try {
-      const result = await newsApi.translateArticle(articleId);
-      alert(result.message);
-      if (result.article.is_translated) {
-        // Update article with translation
-        setArticles(prev => prev.map(a => 
-          a.id === articleId ? { 
-            ...a, 
-            title: result.article.translated_title || a.title,
-            summary: result.article.translated_summary || a.summary 
-          } : a
-        ));
-      }
-    } catch (error) {
-      console.error('Failed to translate article:', error);
-    }
+    alert('번역 기능은 현재 사용할 수 없습니다 (백엔드 연결 필요).');
   };
 
   // 탭 변경
