@@ -1,0 +1,270 @@
+# 뉴스있슈~ (News IT's Issue)
+
+> IT/Engineering News Collection, Analysis & Visualization Platform
+
+![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
+![React](https://img.shields.io/badge/React-19.1.1-61DAFB.svg?logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688.svg?logo=fastapi)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-3178C6.svg?logo=typescript)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python)
+
+## 🌟 Overview
+
+**뉴스있슈~**는 IT/기술 뉴스를 자동으로 수집하고 분석하여 시각적으로 표현하는 현대적인 웹 애플리케이션입니다. 30개 이상의 RSS 소스에서 실시간으로 뉴스를 수집하고, 키워드 분석을 통해 기술 트렌드를 파악할 수 있습니다.
+
+### 🚀 Key Features
+
+- **📊 Real-time News Collection**: 30+ RSS 소스에서 자동 뉴스 수집
+- **🔍 Smart Keyword Analysis**: AI/NLP 기반 키워드 추출 및 분석
+- **📈 Interactive Visualization**: 워드클라우드, 네트워크 그래프, 통계 차트
+- **⭐ Personal Favorites**: 개인 맞춤형 뉴스 큐레이션
+- **🎨 Modern UI/UX**: Material-UI 기반 반응형 디자인
+- **🌙 Dark/Light Theme**: 사용자 선호도에 맞는 테마 지원
+
+## 🏗️ Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │    Backend      │    │    Database     │
+│   React 19      │◄──►│   FastAPI       │◄──►│   SQLite        │
+│   TypeScript    │    │   Python 3.11   │    │   News Articles │
+│   Material-UI   │    │   Async/Await   │    │   Favorites     │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### Frontend Stack
+- **React 19** + **TypeScript** - Modern component-based UI
+- **Material-UI v5** - Google Material Design components  
+- **Vite** - Lightning-fast build tool
+- **Axios** - HTTP client for API communication
+- **Recharts** - Interactive data visualization
+
+### Backend Stack
+- **FastAPI** - High-performance async Python framework
+- **SQLite** - Lightweight, serverless database
+- **BeautifulSoup4** - Web scraping and HTML parsing
+- **Feedparser** - RSS/Atom feed processing
+- **Kiwi** - Korean morphological analyzer for NLP
+
+## 📁 Project Structure
+
+```
+minseo04/
+├── 📱 frontend/news-app/       # React TypeScript application
+│   ├── src/
+│   │   ├── components/         # Reusable UI components
+│   │   ├── api/               # API client and types
+│   │   ├── hooks/             # Custom React hooks
+│   │   └── utils/             # Utility functions
+│   ├── public/                # Static assets
+│   └── dist/                  # Production build
+│
+├── ⚙️ backend/                # FastAPI Python server
+│   ├── main.py               # API endpoints and server setup
+│   ├── enhanced_news_collector.py  # Advanced news collection
+│   ├── database.py           # Database operations
+│   ├── keyword_maker.py      # NLP keyword extraction
+│   └── requirements.txt      # Python dependencies
+│
+├── 📊 docs/                   # Project documentation
+│   ├── PROJECT_OVERVIEW.md   # High-level project description
+│   ├── TECHNICAL_ARCHITECTURE.md  # Technical specifications
+│   └── api/                  # API documentation
+│
+└── 🚀 deployment files        # Production deployment configs
+    ├── render.yaml           # Render.com deployment
+    ├── netlify.toml         # Netlify frontend deployment
+    └── vercel.json          # Vercel deployment alternative
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+- **Node.js** 18+ and npm/yarn
+- **Python** 3.11+ with pip
+- **Git** for version control
+
+### 1. Clone Repository
+```bash
+git clone <repository-url>
+cd minseo04
+```
+
+### 2. Backend Setup
+```bash
+cd backend
+pip install -r requirements.txt
+
+# Initialize database and collect initial news
+python -c "from enhanced_news_collector import init_db, collect_all_news; init_db(); collect_all_news()"
+
+# Start development server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 3. Frontend Setup
+```bash
+cd frontend/news-app
+npm install
+npm run dev
+```
+
+### 4. Open Application
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+
+## 📱 Features Showcase
+
+### 🗞️ News Dashboard
+- **Smart Filtering**: Search by title, content, or source
+- **Source Management**: 30+ curated IT news sources
+- **Real-time Updates**: Background news collection
+- **Responsive Design**: Perfect on desktop, tablet, and mobile
+
+### ⭐ Favorites System
+- **One-click Bookmarking**: Save interesting articles instantly
+- **Personal Collection**: Curated reading list
+- **Quick Access**: Dedicated favorites tab
+- **Export Options**: Share or backup your favorites
+
+### 📊 Data Analytics
+- **Keyword Cloud**: Visual representation of trending topics
+- **Network Graph**: Explore relationships between keywords
+- **Statistics**: Track news volume, source diversity
+- **Trend Analysis**: Monitor topic evolution over time
+
+### 🎨 User Experience
+- **Intuitive Navigation**: Tab-based interface
+- **Theme Support**: Dark/light mode toggle
+- **Keyboard Shortcuts**: Power user features
+- **Accessibility**: WCAG 2.1 AA compliant
+
+## 🔧 Configuration
+
+### Environment Variables
+```env
+# Backend Configuration
+MAX_RESULTS=10                 # Max articles per request
+MAX_TOTAL_PER_SOURCE=200      # Max articles per RSS source  
+RSS_BACKFILL_PAGES=3          # Pages to crawl for each source
+DB_PATH=backend/news.db       # SQLite database location
+ENABLE_SUMMARY=0              # OpenAI summary (0=disabled)
+ENABLE_HTTP_CACHE=1           # HTTP response caching
+PARALLEL_MAX_WORKERS=8        # Concurrent collection threads
+```
+
+### News Sources
+Our platform aggregates from 30+ premium sources:
+- **Korean**: ZDNet Korea, ITWorld, 디지털타임즈, 전자신문, 아이뉴스24
+- **Global**: TechCrunch, Ars Technica, The Verge, Wired, IEEE Spectrum
+- **Specialized**: AI News, DevOps, Cloud Computing, Cybersecurity
+
+## 📡 API Reference
+
+### Core Endpoints
+```http
+GET  /api/articles              # List news articles
+GET  /api/sources               # Available news sources
+GET  /api/keywords/stats        # Keyword frequency statistics
+GET  /api/keywords/network      # Keyword relationship network
+POST /api/collect-news          # Trigger manual news collection
+GET  /api/favorites             # User's favorite articles
+POST /api/favorites/add         # Add article to favorites
+DELETE /api/favorites/{id}      # Remove from favorites
+```
+
+### Example Response
+```json
+{
+  "articles": [
+    {
+      "id": 1,
+      "title": "OpenAI Releases GPT-4 Turbo with Vision",
+      "link": "https://example.com/article",
+      "published": "2024-01-15T10:30:00Z",
+      "source": "TechCrunch",
+      "summary": "OpenAI announces new multimodal capabilities...",
+      "keywords": "OpenAI, GPT-4, AI, Machine Learning",
+      "is_favorite": false
+    }
+  ],
+  "total": 1250,
+  "page": 1,
+  "per_page": 20
+}
+```
+
+## 🚀 Deployment
+
+### Production Deployment (Render.com)
+1. **Connect Repository**: Link GitHub repository to Render
+2. **Auto-Deploy**: `render.yaml` configures automatic deployment
+3. **Environment Setup**: Configure production environment variables
+4. **Database Migration**: Automatic SQLite initialization
+5. **SSL Certificate**: Automatic HTTPS with custom domain support
+
+### Alternative Platforms
+- **Frontend**: Netlify, Vercel, GitHub Pages
+- **Backend**: Railway, Fly.io, DigitalOcean App Platform
+- **Database**: PostgreSQL for production scale
+
+## 🔒 Security & Performance
+
+### Security Features
+- **CORS Protection**: Configured cross-origin policies
+- **SQL Injection Prevention**: Parameterized database queries
+- **XSS Protection**: React's built-in sanitization
+- **Environment Security**: Sensitive configs in environment variables
+- **HTTPS Enforcement**: Secure communication channels
+
+### Performance Optimizations
+- **Code Splitting**: Lazy-loaded React components
+- **Database Indexing**: Optimized query performance
+- **Caching Strategy**: Multi-level caching (HTTP, memory, browser)
+- **Async Processing**: Non-blocking I/O operations
+- **CDN Delivery**: Static asset optimization
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our contribution guidelines:
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
+5. **Open** a Pull Request
+
+### Development Guidelines
+- Follow **TypeScript** best practices for frontend
+- Use **PEP 8** style guide for Python backend
+- Write **unit tests** for new features
+- Update **documentation** for API changes
+- Ensure **responsive design** for UI components
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙋‍♂️ Support & Contact
+
+- **Documentation**: [docs/](docs/)
+- **Issue Tracker**: GitHub Issues
+- **Discussions**: GitHub Discussions
+- **Email**: [Your Contact Email]
+
+## 🎯 Roadmap
+
+### Upcoming Features
+- 🌐 **Multi-language Support**: English, Japanese interface
+- 🔔 **Real-time Notifications**: WebSocket-based updates  
+- 📧 **Email Digest**: Weekly/daily news summaries
+- 🤖 **AI Summarization**: OpenAI-powered article summaries
+- 📊 **Advanced Analytics**: Sentiment analysis, trend predictions
+- 🔗 **Social Integration**: Share articles to social platforms
+
+---
+
+**Built with ❤️ for the developer community**
+
+*Last updated: December 2024*
