@@ -26,12 +26,15 @@ try:
 except ImportError:
     pass
 
-# Import enhanced modules
+# Import enhanced modules (updated to include hybrid collector)
 try:
     from database import db, init_db, get_db_connection
     from enhanced_news_collector import collector, collect_news_async
+    from weekly_news_collector import collect_weekly_news_async
+    from hybrid_data_collector import collect_hybrid_data_async, get_hybrid_collector_info
+    from json_data_loader import json_loader
     ENHANCED_MODULES_AVAILABLE = True
-    logger.info("✅ Enhanced modules loaded successfully")
+    logger.info("✅ Enhanced modules loaded successfully (including hybrid collector)")
 except ImportError as e:
     logger.error(f"❌ Failed to load enhanced modules: {e}")
     ENHANCED_MODULES_AVAILABLE = False
@@ -168,100 +171,202 @@ async def get_articles(
     search: Optional[str] = None,
     favorites_only: bool = False,
     date_from: Optional[str] = None,
-    date_to: Optional[str] = None
+    date_to: Optional[str] = None,
+    use_json: bool = Query(True, description="Use JSON data as default")
 ):
-    """Get articles with filtering and pagination"""
-    await ensure_db_initialized()
+    """Get articles with filtering and pagination (JSON data by default)"""
     
     try:
-        if ENHANCED_MODULES_AVAILABLE:
-            articles = db.get_articles_with_filters(
-                limit=limit,
-                offset=offset,
-                source=source,
-                search=search,
-                favorites_only=favorites_only,
-                date_from=date_from,
-                date_to=date_to
-            )
-            return articles
-        else:
-            # Fallback implementation
-            import sqlite3
-            conn = sqlite3.connect("/tmp/news.db")
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+        # 기본적으로 JSON 데이터 사용
+        if use_json:
+            logger.info("📖 Using JSON data source")
             
-            query = "SELECT *, 0 as is_favorite FROM articles WHERE 1=1"
-            params = []
-            
-            if source:
-                query += " AND source = ?"
-                params.append(source)
-            
+            # 검색이 있는 경우
             if search:
-                query += " AND (title LIKE ? OR summary LIKE ? OR keywords LIKE ?)"
-                search_param = f"%{search}%"
-                params.extend([search_param, search_param, search_param])
+                articles = json_loader.search_articles(search, limit * 2)  # 여유분으로 더 많이 가져옴
+            else:
+                articles = json_loader.get_articles(limit + offset, 0)
             
-            query += " ORDER BY published DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
+            # 소스 필터링
+            if source:
+                articles = [a for a in articles if a.get('source') == source]
             
-            cursor.execute(query, params)
-            articles = [dict(row) for row in cursor.fetchall()]
-            conn.close()
+            # 즐겨찾기 필터링 (JSON 데이터에서는 DB의 즐겨찾기 정보와 결합)
+            if favorites_only:
+                await ensure_db_initialized()
+                if ENHANCED_MODULES_AVAILABLE:
+                    favorite_articles = db.get_articles_with_filters(
+                        limit=limit*10, offset=0, favorites_only=True
+                    )
+                    favorite_links = {a.get('link') for a in favorite_articles}
+                    articles = [a for a in articles if a.get('link') in favorite_links]
+                else:
+                    articles = []  # JSON 전용 모드에서는 즐겨찾기 지원 안함
             
+            # is_favorite 필드 추가 (DB에서 즐겨찾기 상태 확인)
+            if ENHANCED_MODULES_AVAILABLE:
+                try:
+                    await ensure_db_initialized()
+                    for article in articles:
+                        try:
+                            favorites = db.execute_query(
+                                "SELECT article_id FROM favorites f JOIN articles a ON f.article_id = a.id WHERE a.link = %s"
+                                if db.db_type == "postgresql" 
+                                else "SELECT article_id FROM favorites f JOIN articles a ON f.article_id = a.id WHERE a.link = ?",
+                                [article.get('link', '')]
+                            )
+                            article['is_favorite'] = len(favorites) > 0
+                        except:
+                            article['is_favorite'] = False
+                except:
+                    for article in articles:
+                        article['is_favorite'] = False
+            else:
+                for article in articles:
+                    article['is_favorite'] = False
+            
+            # 페이지네이션 적용
+            total_before_pagination = len(articles)
+            articles = articles[offset:offset + limit]
+            
+            logger.info(f"📖 JSON 데이터에서 {len(articles)}개 기사 반환 (전체 {total_before_pagination}개 중)")
             return articles
+        
+        # DB 데이터 사용 (기존 로직)
+        else:
+            await ensure_db_initialized()
+            
+            if ENHANCED_MODULES_AVAILABLE:
+                articles = db.get_articles_with_filters(
+                    limit=limit,
+                    offset=offset,
+                    source=source,
+                    search=search,
+                    favorites_only=favorites_only,
+                    date_from=date_from,
+                    date_to=date_to
+                )
+                return articles
+            else:
+                # Fallback implementation
+                import sqlite3
+                conn = sqlite3.connect("/tmp/news.db")
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                query = "SELECT *, 0 as is_favorite FROM articles WHERE 1=1"
+                params = []
+                
+                if source:
+                    query += " AND source = ?"
+                    params.append(source)
+                
+                if search:
+                    query += " AND (title LIKE ? OR summary LIKE ? OR keywords LIKE ?)"
+                    search_param = f"%{search}%"
+                    params.extend([search_param, search_param, search_param])
+                
+                query += " ORDER BY published DESC LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+                
+                cursor.execute(query, params)
+                articles = [dict(row) for row in cursor.fetchall()]
+                conn.close()
+                
+                return articles
             
     except Exception as e:
         logger.error(f"Error fetching articles: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/sources")
-async def get_sources():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT source FROM articles ORDER BY source")
-    sources = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return sources
+async def get_sources(use_json: bool = Query(True, description="Use JSON data as default")):
+    """Get available news sources"""
+    try:
+        # 기본적으로 JSON 데이터 사용
+        if use_json:
+            sources = json_loader.get_sources()
+            logger.info(f"📖 JSON에서 {len(sources)}개 소스 반환")
+            return sources
+        else:
+            # DB에서 소스 가져오기
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT source FROM articles ORDER BY source")
+            sources = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return sources
+    except Exception as e:
+        logger.error(f"Error fetching sources: {e}")
+        return []
 
 @app.get("/api/keywords/stats")
-async def get_keyword_stats(limit: int = Query(50, le=200)):
+async def get_keyword_stats(limit: int = Query(50, le=200), use_json: bool = Query(True, description="Use JSON data as default")):
     """Get keyword statistics"""
-    await ensure_db_initialized()
     
     try:
-        if ENHANCED_MODULES_AVAILABLE:
-            return db.get_keyword_stats(limit)
-        else:
-            # Fallback implementation
-            import sqlite3
-            conn = sqlite3.connect("/tmp/news.db")
-            cursor = conn.cursor()
-            cursor.execute("SELECT keywords FROM articles WHERE keywords IS NOT NULL")
+        # 기본적으로 JSON 데이터 사용
+        if use_json:
+            logger.info("📖 JSON 데이터에서 키워드 통계 생성")
+            articles = json_loader.get_articles(limit * 10)  # 충분한 양의 기사 가져오기
             
             keyword_counter = {}
-            for row in cursor.fetchall():
-                try:
-                    if row[0]:
-                        # Try to parse as JSON, fallback to comma-split
-                        try:
-                            keywords = json.loads(row[0])
-                        except:
-                            keywords = row[0].split(',')
-                        
+            for article in articles:
+                keywords_str = article.get('keywords', '')
+                if keywords_str:
+                    try:
+                        # JSON 형태의 키워드 파싱
+                        if keywords_str.startswith('['):
+                            keywords = json.loads(keywords_str)
+                        else:
+                            keywords = keywords_str.split(',')
+                            
                         for kw in keywords:
-                            kw = kw.strip()
-                            if kw:
+                            kw = str(kw).strip().strip('"').strip("'")
+                            if kw and len(kw) > 1:
                                 keyword_counter[kw] = keyword_counter.get(kw, 0) + 1
-                except Exception:
-                    continue
-            
-            conn.close()
+                    except Exception:
+                        continue
             
             sorted_keywords = sorted(keyword_counter.items(), key=lambda x: x[1], reverse=True)[:limit]
-            return [{"keyword": k, "count": v} for k, v in sorted_keywords]
+            result = [{"keyword": k, "count": v} for k, v in sorted_keywords]
+            logger.info(f"📖 {len(result)}개 키워드 통계 반환")
+            return result
+        
+        # DB 데이터 사용 (기존 로직)
+        else:
+            await ensure_db_initialized()
+            
+            if ENHANCED_MODULES_AVAILABLE:
+                return db.get_keyword_stats(limit)
+            else:
+                # Fallback implementation
+                import sqlite3
+                conn = sqlite3.connect("/tmp/news.db")
+                cursor = conn.cursor()
+                cursor.execute("SELECT keywords FROM articles WHERE keywords IS NOT NULL")
+                
+                keyword_counter = {}
+                for row in cursor.fetchall():
+                    try:
+                        if row[0]:
+                            # Try to parse as JSON, fallback to comma-split
+                            try:
+                                keywords = json.loads(row[0])
+                            except:
+                                keywords = row[0].split(',')
+                            
+                            for kw in keywords:
+                                kw = kw.strip()
+                                if kw:
+                                    keyword_counter[kw] = keyword_counter.get(kw, 0) + 1
+                    except Exception:
+                        continue
+                
+                conn.close()
+                
+                sorted_keywords = sorted(keyword_counter.items(), key=lambda x: x[1], reverse=True)[:limit]
+                return [{"keyword": k, "count": v} for k, v in sorted_keywords]
             
     except Exception as e:
         logger.error(f"Error getting keyword stats: {e}")
@@ -354,36 +459,72 @@ async def remove_favorite(article_id: int):
     return {"success": True, "message": "Favorite removed"}
 
 @app.get("/api/stats")
-async def get_stats():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM articles")
-    total_articles = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(DISTINCT source) FROM articles")
-    total_sources = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM favorites")
-    total_favorites = cursor.fetchone()[0]
-    
-    cursor.execute("""
-        SELECT DATE(published) as date, COUNT(*) as count 
-        FROM articles 
-        WHERE published >= date('now', '-7 days')
-        GROUP BY DATE(published)
-        ORDER BY date
-    """)
-    daily_counts = [dict(row) for row in cursor.fetchall()]
-    
-    conn.close()
-    
-    return {
-        "total_articles": total_articles,
-        "total_sources": total_sources,
-        "total_favorites": total_favorites,
-        "daily_counts": daily_counts
-    }
+async def get_stats(use_json: bool = Query(True, description="Use JSON data as default")):
+    """Get general statistics"""
+    try:
+        # 기본적으로 JSON 데이터 사용
+        if use_json:
+            stats = json_loader.get_stats()
+            
+            # DB에서 즐겨찾기 수만 가져와서 추가
+            try:
+                await ensure_db_initialized()
+                if ENHANCED_MODULES_AVAILABLE:
+                    favorites_result = db.execute_query("SELECT COUNT(*) as count FROM favorites")
+                    if favorites_result:
+                        stats['total_favorites'] = favorites_result[0]['count']
+                else:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM favorites")
+                    stats['total_favorites'] = cursor.fetchone()[0]
+                    conn.close()
+            except Exception as e:
+                logger.debug(f"즐겨찾기 수 조회 실패: {e}")
+                stats['total_favorites'] = 0
+            
+            logger.info(f"📖 JSON 통계 반환: {stats['total_articles']}개 기사, {stats['total_sources']}개 소스")
+            return stats
+        
+        # DB 데이터 사용 (기존 로직)
+        else:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM articles")
+            total_articles = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(DISTINCT source) FROM articles")
+            total_sources = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM favorites")
+            total_favorites = cursor.fetchone()[0]
+            
+            cursor.execute("""
+                SELECT DATE(published) as date, COUNT(*) as count 
+                FROM articles 
+                WHERE published >= date('now', '-7 days')
+                GROUP BY DATE(published)
+                ORDER BY date
+            """)
+            daily_counts = [dict(row) for row in cursor.fetchall()]
+            
+            conn.close()
+            
+            return {
+                "total_articles": total_articles,
+                "total_sources": total_sources,
+                "total_favorites": total_favorites,
+                "daily_counts": daily_counts
+            }
+    except Exception as e:
+        logger.error(f"Error getting stats: {e}")
+        return {
+            "total_articles": 0,
+            "total_sources": 0, 
+            "total_favorites": 0,
+            "daily_counts": []
+        }
 
 # Inline news collection functions
 def collect_from_rss(feed_url: str, source: str, max_items: int = 10):
@@ -564,53 +705,91 @@ async def run_background_collection():
 
 @app.post("/api/collect-news-now")
 async def collect_news_now(
-    max_feeds: Optional[int] = Query(None, description="Maximum number of feeds to process")
+    max_feeds: Optional[int] = Query(None, description="Maximum number of feeds to process"),
+    use_hybrid: bool = Query(True, description="Use hybrid collection (JSON + RSS)")
 ):
-    """Immediate news collection with full response"""
+    """하이브리드 뉴스 수집 (JSON 파일 + 최근 1주일 RSS)"""
     try:
         await ensure_db_initialized()
         
         if ENHANCED_MODULES_AVAILABLE:
-            logger.info("🚀 Starting enhanced news collection")
-            result = await collect_news_async(max_feeds)
-            
-            # Get updated statistics
-            try:
-                if db.db_type == "postgresql":
+            if use_hybrid:
+                # NEW: Use hybrid collector
+                logger.info("🚀 Starting HYBRID collection (JSON files + recent RSS)")
+                result = await collect_hybrid_data_async()
+                
+                # Get updated statistics
+                try:
                     stats_query = "SELECT COUNT(*) as count FROM articles"
                     sources_query = "SELECT source, COUNT(*) as count FROM articles GROUP BY source ORDER BY count DESC"
-                else:
+                    
+                    stats_result = db.execute_query(stats_query)
+                    total_articles = stats_result[0]['count'] if stats_result else 0
+                    
+                    sources_result = db.execute_query(sources_query)
+                    by_source = {row['source']: row['count'] for row in sources_result}
+                    
+                    return {
+                        "message": f"하이브리드 수집 완료: JSON {result['json_files']['inserted']}개 + RSS {result['rss_collection']['inserted']}개 = 총 {result['total_inserted']}개 추가",
+                        "status": "success",
+                        "collection_type": "hybrid",
+                        "duration": result['duration'],
+                        "json_files": result['json_files'],
+                        "rss_collection": result['rss_collection'],
+                        "total_inserted": result['total_inserted'],
+                        "total_processed": result['total_processed'],
+                        "total_articles_in_db": total_articles,
+                        "by_source": by_source,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                except Exception as stats_e:
+                    logger.warning(f"Error getting stats: {stats_e}")
+                    return {
+                        "message": f"하이브리드 수집 완료 (통계 오류): {result['total_inserted']}개 추가",
+                        "status": "success",
+                        "collection_result": result
+                    }
+            else:
+                # LEGACY: Weekly RSS only
+                logger.info("🚀 Starting weekly news collection (1주일 데이터 only)")
+                result = await collect_weekly_news_async()
+                
+                # Get updated statistics
+                try:
                     stats_query = "SELECT COUNT(*) as count FROM articles"
                     sources_query = "SELECT source, COUNT(*) as count FROM articles GROUP BY source ORDER BY count DESC"
-                
-                stats_result = db.execute_query(stats_query)
-                total_articles = stats_result[0]['count'] if stats_result else 0
-                
-                sources_result = db.execute_query(sources_query)
-                by_source = {row['source']: row['count'] for row in sources_result}
-                
-                return {
-                    "message": f"뉴스 수집 완료: {result['stats']['total_inserted']}개 신규, {result['stats']['total_updated']}개 업데이트",
-                    "status": "success",
-                    "duration": result['duration'],
-                    "processed": result['stats']['total_processed'],
-                    "inserted": result['stats']['total_inserted'],
-                    "updated": result['stats']['total_updated'],
-                    "skipped": result['stats']['total_skipped'],
-                    "total_articles": total_articles,
-                    "by_source": by_source,
-                    "successful_feeds": result['successful_feeds'],
-                    "failed_feeds": result['failed_feeds'],
-                    "total_feeds": result['total_feeds'],
-                    "timestamp": datetime.now().isoformat()
-                }
-            except Exception as stats_e:
-                logger.warning(f"Error getting stats: {stats_e}")
-                return {
-                    "message": "뉴스 수집 완료 (통계 오류)",
-                    "status": "success",
-                    "collection_result": result
-                }
+                    
+                    stats_result = db.execute_query(stats_query)
+                    total_articles = stats_result[0]['count'] if stats_result else 0
+                    
+                    sources_result = db.execute_query(sources_query)
+                    by_source = {row['source']: row['count'] for row in sources_result}
+                    
+                    return {
+                        "message": f"1주일 뉴스 수집 완료: {result['stats']['total_inserted']}개 신규 기사 추가",
+                        "status": "success",
+                        "collection_type": "weekly_rss",
+                        "collection_period": result['collection_period'],
+                        "duration": result['duration'],
+                        "processed": result['stats']['total_processed'],
+                        "unique_articles": result['stats']['total_unique'],
+                        "inserted": result['stats']['total_inserted'],
+                        "updated": result['stats']['total_updated'],
+                        "skipped": result['stats']['total_skipped'],
+                        "total_articles_in_db": total_articles,
+                        "by_source": by_source,
+                        "successful_feeds": result['successful_feeds'],
+                        "failed_feeds": result['failed_feeds'],
+                        "total_feeds": result['total_feeds'],
+                        "timestamp": datetime.now().isoformat()
+                    }
+                except Exception as stats_e:
+                    logger.warning(f"Error getting stats: {stats_e}")
+                    return {
+                        "message": "1주일 뉴스 수집 완료 (통계 오류)",
+                        "status": "success",
+                        "collection_result": result
+                    }
         else:
             # Fallback simple collection
             if SIMPLE_COLLECTOR_AVAILABLE:
@@ -631,7 +810,7 @@ async def collect_news_now(
 
 @app.get("/api/collection-status")
 async def get_collection_status():
-    """Get current collection status and stats"""
+    """Get current collection status and stats (including hybrid collector info)"""
     try:
         await ensure_db_initialized()
         
@@ -657,6 +836,13 @@ async def get_collection_status():
             sources_query = "SELECT source, COUNT(*) as count FROM articles GROUP BY source ORDER BY count DESC LIMIT 10"
             top_sources = db.execute_query(sources_query)
             
+            # Get hybrid collector info
+            try:
+                hybrid_info = get_hybrid_collector_info()
+            except Exception as e:
+                logger.warning(f"Failed to get hybrid collector info: {e}")
+                hybrid_info = None
+            
             return {
                 "status": "active",
                 "total_articles": total_articles,
@@ -664,6 +850,12 @@ async def get_collection_status():
                 "top_sources": top_sources,
                 "database_type": db.db_type,
                 "enhanced_features": True,
+                "hybrid_collector": hybrid_info,
+                "collection_modes": {
+                    "hybrid": "JSON files + recent RSS (default)",
+                    "weekly_rss": "RSS only (1 week limit)",
+                    "json_only": "Historical JSON files only"
+                },
                 "timestamp": datetime.now().isoformat()
             }
         else:
