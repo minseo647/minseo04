@@ -57,30 +57,60 @@ STOPWORDS = {
     '한국', '미국', '중국', '일본', '유럽', '아시아', '서울', '부산', '대구', '인천', '광주', '대전', '울산',
     '회사', '기업', '업체', '업계', '산업', '분야', '시장', '고객', '사용자', '이용자', '소비자',
     '발표', '공개', '출시', '런칭', '시작', '종료', '완료', '진행', '계획', '예정', '목표', '성과', '결과',
-    # 영어 불용어
+    
+    # 영어 불용어 (대소문자 모두 포함)
     'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from',
     'up', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'among',
     'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
     'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'they',
     'them', 'their', 'we', 'us', 'our', 'you', 'your', 'he', 'him', 'his', 'she', 'her', 'it', 'its',
-    # 한 글자 단어들
-    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'G', 'K', 'M', 'B', 'T', 'P'
+    'as', 'so', 'if', 'when', 'where', 'who', 'what', 'why', 'how', 'which', 'than', 'then', 'now',
+    'here', 'there', 'more', 'most', 'some', 'any', 'all', 'each', 'every', 'other', 'another', 'such',
+    'very', 'much', 'many', 'few', 'little', 'big', 'small', 'large', 'long', 'short', 'high', 'low',
+    'new', 'old', 'first', 'last', 'next', 'previous', 'same', 'different', 'good', 'bad', 'best', 'better',
+    'get', 'got', 'getting', 'make', 'made', 'making', 'take', 'took', 'taken', 'give', 'gave', 'given',
+    'come', 'came', 'coming', 'go', 'went', 'going', 'see', 'saw', 'seen', 'know', 'knew', 'known',
+    'think', 'thought', 'say', 'said', 'tell', 'told', 'ask', 'asked', 'work', 'worked', 'working',
+    'use', 'used', 'using', 'find', 'found', 'look', 'looked', 'looking', 'seem', 'seemed', 'become',
+    'became', 'part', 'over', 'back', 'after', 'use', 'her', 'man', 'day', 'get', 'use', 'man', 'new',
+    'now', 'way', 'may', 'say', 'each', 'which', 'she', 'two', 'how', 'its', 'who', 'did', 'yes', 'his',
+    'been', 'her', 'my', 'more', 'if', 'no', 'do', 'would', 'my', 'so', 'about', 'out', 'many', 'then',
+    
+    # URL/웹 관련
+    'http', 'https', 'www', 'com', 'org', 'net', 'co', 'kr', 'html', 'url', 'link', 'site', 'web', 'page',
+    
+    # 기타 의미없는 단어들
+    'google', 'microsoft', 'apple', 'facebook', 'twitter', 'instagram', 'youtube', 'amazon', 'netflix',
+    'like', 'just', 'also', 'only', 'even', 'still', 'well', 'too', 'really', 'actually', 'probably',
+    'maybe', 'perhaps', 'quite', 'rather', 'pretty', 'enough', 'almost', 'nearly', 'around', 'about',
+    
+    # 한 글자 단어들과 숫자
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'G', 'K', 'M', 'B', 'T', 'P', 'i', 'x', 'v', 'c'
 }
 
-# 공학/기술 관련 키워드 화이트리스트
-TECH_KEYWORDS = {
+# 공학/기술 관련 키워드 화이트리스트 (카테고리 키워드 포함)
+TECH_KEYWORDS = set()
+
+# 카테고리에서 키워드 추출
+for major_category, subcategories in CATEGORIES.items():
+    for subcategory, keywords in subcategories.items():
+        TECH_KEYWORDS.update(keywords)
+
+# 추가 기술 키워드
+ADDITIONAL_TECH_KEYWORDS = {
     # AI/머신러닝
     'AI', '인공지능', '머신러닝', '딥러닝', '신경망', 'CNN', 'RNN', 'LSTM', 'GAN', 'GPT', 'ChatGPT', 'OpenAI',
     '자연어처리', 'NLP', '컴퓨터비전', '패턴인식', '강화학습', '지도학습', '비지도학습', '트랜스포머', 'BERT',
+    'LLM', '대화형AI', '생성AI', '멀티모달', '파인튜닝', 'RAG', '프롬프트엔지니어링',
     
     # 소프트웨어/프로그래밍
-    'Python', 'Java', 'JavaScript', 'C++', 'C#', 'Go', 'Rust', 'Swift', 'Kotlin', 'React', 'Vue', 'Angular',
+    'Python', 'Java', 'JavaScript', 'TypeScript', 'C++', 'C#', 'Go', 'Rust', 'Swift', 'Kotlin', 'React', 'Vue', 'Angular',
     'Node.js', 'Django', 'Flask', 'Spring', '프레임워크', '라이브러리', 'API', 'REST', 'GraphQL', 'SDK',
     '오픈소스', '깃허브', 'GitHub', '버전관리', 'Git', '코딩', '프로그래밍', '개발자', '소프트웨어',
+    'DevOps', 'CI/CD', '마이크로서비스', '컨테이너', 'Docker', 'Kubernetes',
     
-    # 클라우드/인프라
-    'AWS', 'Azure', 'GCP', '구글클라우드', '클라우드', '서버리스', '마이크로서비스', 'Docker', '쿠버네티스', 'Kubernetes',
-    '컨테이너', '가상화', 'VM', '하이브리드클라우드', '멀티클라우드', 'DevOps', 'CI/CD', '배포', '운영',
+    # 클라우드/인프라  
+    'AWS', 'Azure', 'GCP', '구글클라우드', '클라우드', '서버리스', '가상화', 'VM', '하이브리드클라우드', '멀티클라우드',
     
     # 데이터/빅데이터
     '빅데이터', '데이터사이언스', '데이터분석', '데이터마이닝', '데이터베이스', 'SQL', 'NoSQL', 'MongoDB',
@@ -94,6 +124,7 @@ TECH_KEYWORDS = {
     # 보안/사이버보안
     '사이버보안', '보안', '암호화', '해킹', '피싱', '랜섬웨어', '멀웨어', '바이러스', '취약점', 'CISO',
     '인증', '권한', 'SSO', '다중인증', 'MFA', '블록체인', '스마트컨트랙트', '비트코인', '이더리움',
+    '제로트러스트', '침입탐지', '보안운영센터', 'SOC',
     
     # 하드웨어/반도체
     '반도체', '칩', '프로세서', 'CPU', 'GPU', 'NPU', 'TPU', '메모리', 'RAM', 'SSD', 'HDD',
@@ -117,7 +148,7 @@ TECH_KEYWORDS = {
     '태양광', '풍력', '수소', '연료전지', '에너지저장장치', 'ESS', '스마트그리드', '신재생에너지',
     '탄소중립', '탄소포집', 'CCUS', '친환경', '그린테크', '청정기술',
     
-    # 게임/엔터테인메트
+    # 게임/엔터테인먼트
     '게임엔진', 'Unity', 'Unreal', 'VR', '가상현실', 'AR', '증강현실', 'MR', '혼합현실', '메타버스',
     'NFT', 'P2E', '게임개발', '모바일게임', 'PC게임', '콘솔게임',
     
@@ -125,10 +156,13 @@ TECH_KEYWORDS = {
     '핀테크', '디지털뱅킹', '모바일페이', '간편결제', 'CBDC', '디지털화폐', '크라우드펀딩',
     '로보어드바이저', '인슈어테크', 'RegTech', '디지털금융',
     
-    # 기타 신기술
+    # 신기술
     '양자컴퓨팅', '양자', '나노기술', '신소재', '탄소나노튜브', '그래핀', '슈퍼컴퓨터', 'HPC',
     '엣지AI', '온디바이스AI', 'TinyML', '디지털트윈', 'API경제', 'SaaS', 'PaaS', 'IaaS'
 }
+
+# 모든 기술 키워드 합치기
+TECH_KEYWORDS.update(ADDITIONAL_TECH_KEYWORDS)
 
 def is_meaningful_token(token: str) -> bool:
     """의미있는 토큰인지 확인"""
@@ -172,27 +206,101 @@ def is_tech_term(token: str) -> bool:
     return False
 
 def _guess_korean_font_path(user_font_path: Optional[str] = None) -> Optional[str]:
-    if user_font_path and os.path.exists(user_font_path): return user_font_path
+    """한글 폰트 경로를 찾는 함수 - 다양한 환경 지원"""
+    if user_font_path and os.path.exists(user_font_path): 
+        return user_font_path
+    
+    # 한글 폰트 후보들 (우선순위대로)
     candidates = [
+        # Windows 폰트
         r"C:\Windows\Fonts\malgun.ttf",
-        r"C:\Windows\Fonts\malgunbd.ttf",
+        r"C:\Windows\Fonts\malgunbd.ttf", 
         r"C:\Windows\Fonts\NanumGothic.ttf",
         r"C:\Windows\Fonts\NanumBarunGothic.ttf",
         r"C:\Windows\Fonts\NotoSansKR-Regular.otf",
         r"C:\Windows\Fonts\NotoSansCJKkr-Regular.otf",
+        r"C:\Windows\Fonts\gulim.ttc",
+        r"C:\Windows\Fonts\batang.ttc",
+        
+        # macOS 폰트
         "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/AppleGothic.ttf",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
         "/Library/Fonts/AppleGothic.ttf",
         "/Library/Fonts/NanumGothic.otf",
         "/Library/Fonts/NanumGothic.ttf",
         "/Library/Fonts/NotoSansKR-Regular.otf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        
+        # Linux/Ubuntu 폰트
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf", 
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.otf",
         "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        
+        # 추가 Linux 경로들
+        "/usr/share/fonts/TTF/NanumGothic.ttf",
+        "/usr/share/fonts/OTF/NotoSansKR-Regular.otf",
+        "/usr/local/share/fonts/NanumGothic.ttf", 
+        "/home/fonts/NanumGothic.ttf",
+        
+        # Docker/컨테이너 환경
+        "/fonts/NanumGothic.ttf",
+        "/app/fonts/NanumGothic.ttf",
+        "./fonts/NanumGothic.ttf",
+        
+        # Google Fonts (웹 환경)
+        "/tmp/NanumGothic.ttf",
+        "/var/tmp/NanumGothic.ttf"
     ]
-    for p in candidates:
-        if os.path.exists(p): return p
+    
+    for path in candidates:
+        if os.path.exists(path): 
+            logger.info(f"✅ 한글 폰트 발견: {path}")
+            return path
+    
+    # 시스템에서 폰트 검색 시도
+    try:
+        import subprocess
+        
+        # Linux/Unix 시스템에서 fc-list를 사용하여 한글 폰트 찾기
+        result = subprocess.run(['fc-list', ':lang=ko'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout:
+            for line in result.stdout.split('\n'):
+                if line and '.ttf' in line.lower():
+                    font_path = line.split(':')[0].strip()
+                    if os.path.exists(font_path):
+                        logger.info(f"✅ fc-list로 한글 폰트 발견: {font_path}")
+                        return font_path
+    except (FileNotFoundError, subprocess.TimeoutExpired, Exception) as e:
+        logger.debug(f"fc-list 실행 실패: {e}")
+    
+    # 마지막으로 matplotlib 기본 폰트 시도
+    try:
+        import matplotlib.font_manager as fm
+        font_list = fm.findSystemFonts(fontpaths=None, fontext='ttf')
+        korean_fonts = []
+        
+        for font_path in font_list:
+            font_name = os.path.basename(font_path).lower()
+            if any(keyword in font_name for keyword in ['nanum', 'malgun', 'gothic', 'noto']):
+                korean_fonts.append(font_path)
+        
+        if korean_fonts:
+            selected_font = korean_fonts[0]
+            logger.info(f"✅ matplotlib으로 한글 폰트 발견: {selected_font}")
+            return selected_font
+            
+    except Exception as e:
+        logger.debug(f"matplotlib 폰트 검색 실패: {e}")
+    
+    logger.warning("❌ 한글 폰트를 찾을 수 없습니다. 워드클라우드에서 한글이 깨져 보일 수 있습니다.")
     return None
 
 def _filter_wc_tokens(keywords_freq: List[tuple], strict_filter: bool = True) -> List[tuple]:
@@ -218,17 +326,37 @@ def render_wordcloud_wc(keywords_freq: List[tuple], font_path: Optional[str] = N
     if not filtered:
         return None
         
-    fp = _guess_korean_font_path(font_path) if auto_korean_font else font_path
+    fp = None
+    if auto_korean_font:
+        fp = _guess_korean_font_path(font_path)
+        
+        # 폰트를 찾지 못한 경우 다운로드 시도
+        if fp is None:
+            fp = _download_korean_font()
+    else:
+        fp = font_path
     
     try:
         from wordcloud import WordCloud
         import matplotlib.pyplot as plt
         
+        # 한글 폰트 지원을 위한 matplotlib 설정
+        if fp:
+            try:
+                import matplotlib.font_manager as fm
+                fm.fontManager.addfont(fp)
+                plt.rcParams['font.family'] = [fp]
+            except Exception as e:
+                logger.debug(f"matplotlib 폰트 설정 실패: {e}")
+        
         wc = WordCloud(
             width=1000, height=500,
             background_color="white",
             collocations=False,
-            font_path=fp
+            font_path=fp,
+            max_words=200,
+            relative_scaling=0.5,
+            colormap='viridis'
         )
         wc.generate_from_frequencies({k: int(v) for k, v in filtered})
         
@@ -237,6 +365,40 @@ def render_wordcloud_wc(keywords_freq: List[tuple], font_path: Optional[str] = N
         
     except ImportError:
         logger.error("WordCloud library not available")
+        return None
+
+def _download_korean_font() -> Optional[str]:
+    """나눔고딕 폰트를 다운로드하여 임시 디렉터리에 저장"""
+    try:
+        import urllib.request
+        
+        # 폰트 저장할 임시 디렉터리 생성
+        font_dir = "/tmp/fonts"
+        os.makedirs(font_dir, exist_ok=True)
+        font_path = os.path.join(font_dir, "NanumGothic.ttf")
+        
+        # 이미 다운로드된 경우
+        if os.path.exists(font_path):
+            logger.info(f"✅ 기존 다운로드된 한글 폰트 사용: {font_path}")
+            return font_path
+        
+        # 나눔고딕 폰트 다운로드 (Google Fonts)
+        font_url = "https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf"
+        
+        logger.info("📥 한글 폰트 다운로드 중...")
+        urllib.request.urlretrieve(font_url, font_path)
+        
+        if os.path.exists(font_path) and os.path.getsize(font_path) > 1000:  # 1KB 이상
+            logger.info(f"✅ 한글 폰트 다운로드 성공: {font_path}")
+            return font_path
+        else:
+            logger.error("❌ 다운로드된 폰트 파일이 유효하지 않습니다")
+            if os.path.exists(font_path):
+                os.remove(font_path)
+            return None
+            
+    except Exception as e:
+        logger.error(f"❌ 한글 폰트 다운로드 실패: {e}")
         return None
 
 from pathlib import Path
