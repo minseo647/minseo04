@@ -504,7 +504,7 @@ export default function App() {
     setCollecting(true);
     
     try {
-      console.log('🚀 백엔드 API를 통한 뉴스 수집 시작...');
+      console.log('🚀 [데이터 수집 현황] 백엔드 API를 통한 뉴스 수집 시작...');
       
       const startTime = Date.now();
       
@@ -521,7 +521,7 @@ export default function App() {
           const result = await response.json();
           const duration = (Date.now() - startTime) / 1000;
           
-          console.log('✅ 백엔드 수집 완료:', result);
+          console.log('✅ [데이터 수집 현황] 백엔드 수집 완료:', result);
           
           // 성공 메시지
           const message = `✅ ${result.message || '하이브리드 뉴스 수집 완료'} (${Math.round(duration)}초)\n` +
@@ -532,6 +532,7 @@ export default function App() {
           alert(message);
           
           // 백엔드에서 업데이트된 데이터 다시 로드
+          console.log('🔄 [데이터 수집 현황] 업데이트된 데이터 로딩 중...');
           const articlesResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/articles?limit=1000&use_json=true`);
           if (articlesResponse.ok) {
             const updatedArticles = await articlesResponse.json();
@@ -551,7 +552,7 @@ export default function App() {
             }));
             
             setArticles(formattedArticles);
-            console.log(`✅ ${formattedArticles.length}개 기사로 업데이트됨`);
+            console.log(`✅ [데이터 수집 현황] ${formattedArticles.length}개 기사로 업데이트 완료`);
             
             // 키워드 통계 재생성
             const keywordCounter: Record<string, number> = {};
@@ -583,11 +584,11 @@ export default function App() {
           }
         }
       } catch (backendError) {
-        console.warn('⚠️ 백엔드 수집 실패, 프론트엔드 수집으로 폴백:', backendError);
+        console.warn('⚠️ [데이터 수집 현황] 백엔드 수집 실패, 프론트엔드 수집으로 폴백:', backendError);
       }
       
       // 백엔드 실패시 프론트엔드 경량 수집
-      console.log('🔄 프론트엔드 경량 수집으로 폴백...');
+      console.log('🔄 [데이터 수집 현황] 프론트엔드 경량 수집으로 폴백...');
       localStorage.removeItem('news_articles');
       localStorage.removeItem('news_last_update');
       
@@ -619,7 +620,7 @@ export default function App() {
       }
       
     } catch (error) {
-      console.error('❌ 뉴스 수집 실패:', error);
+      console.error('❌ [데이터 수집 현황] 뉴스 수집 최종 실패:', error);
       
       let errorMessage = '뉴스 수집 중 오류가 발생했습니다.';
       if (error instanceof Error) {
@@ -636,7 +637,7 @@ export default function App() {
       
     } finally {
       setCollecting(false);
-      console.log('📝 수집 프로세스 완료');
+      console.log('📝 [데이터 수집 현황] 모든 수집 프로세스 완료');
     }
   };
 

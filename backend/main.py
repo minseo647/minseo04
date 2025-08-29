@@ -717,6 +717,7 @@ async def collect_news_now(
             if use_hybrid:
                 # NEW: Use hybrid collector
                 logger.info("🚀 Starting HYBRID collection (JSON files + recent RSS)")
+                logger.info("📊 Step 1/3: Initializing hybrid collector...")
                 result = await collect_hybrid_data_async()
                 
                 # Get updated statistics

@@ -54,13 +54,19 @@ class HybridDataCollector:
         """전체 데이터 수집 (JSON 파일 + 최근 RSS)"""
         start_time = datetime.now()
         logger.info("🚀 하이브리드 데이터 수집 시작")
+        logger.info(f"📂 발견된 JSON 파일: {len(self.json_files)}개")
+        logger.info(f"🗓️ RSS 수집 기간: {self.cutoff_date.strftime('%Y-%m-%d')} 이후")
         
         try:
             # 1. 기존 JSON 파일들 로드
+            logger.info("📊 1단계: JSON 파일 로딩 중...")
             json_stats = await self._load_json_files()
+            logger.info(f"✅ 1단계 완료: {json_stats['inserted']}개 기사 로딩")
             
             # 2. 최근 1주일 RSS 데이터 수집
+            logger.info("📊 2단계: RSS 수집 중...")
             rss_stats = await self._collect_recent_rss()
+            logger.info(f"✅ 2단계 완료: {rss_stats['inserted']}개 신규 RSS 기사")
             
             # 결과 통계
             total_stats = {
