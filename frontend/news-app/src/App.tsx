@@ -696,6 +696,78 @@ export default function App() {
     alert('번역 기능은 현재 사용할 수 없습니다 (백엔드 연결 필요).');
   };
 
+  // 요약 자동 생성
+  const handleEnhanceSummaries = async () => {
+    if (collecting) return;
+    
+    setCollecting(true);
+    
+    try {
+      console.log('🤖 요약 자동 생성 시작...');
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/enhance-summaries?limit=50`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        console.log('✅ 요약 생성 완료:', result);
+        
+        const message = `✅ 요약 자동 생성 완료!\n` +
+          `• 처리된 기사: ${result.total}개\n` +
+          `• 새로 생성된 요약: ${result.enhanced}개\n` +
+          `• 실패: ${result.failed}개`;
+        
+        alert(message);
+        
+        // 데이터 새로고침
+        const articlesResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/articles?limit=1000&use_json=true`);
+        if (articlesResponse.ok) {
+          const updatedArticles = await articlesResponse.json();
+          
+          const formattedArticles = updatedArticles.map((article: any, index: number) => ({
+            id: article.id || index + 1,
+            title: article.title || '제목 없음',
+            link: article.link || '#',
+            published: article.published || new Date().toISOString(),
+            source: article.source || '알 수 없음',
+            summary: article.summary || '',
+            keywords: Array.isArray(article.keywords) ? article.keywords : 
+                      typeof article.keywords === 'string' ? 
+                      (article.keywords.startsWith('[') ? JSON.parse(article.keywords) : article.keywords.split(',').map(k => k.trim())) : 
+                      [],
+            is_favorite: article.is_favorite || false
+          }));
+          
+          setArticles(formattedArticles);
+          console.log(`✅ 요약이 개선된 ${formattedArticles.length}개 기사로 업데이트됨`);
+        }
+        
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'API 요청 실패');
+      }
+      
+    } catch (error) {
+      console.error('❌ 요약 생성 실패:', error);
+      
+      let errorMessage = '요약 자동 생성 중 오류가 발생했습니다.';
+      if (error instanceof Error) {
+        errorMessage += `\n오류 내용: ${error.message}`;
+      }
+      
+      alert(`❌ ${errorMessage}`);
+      
+    } finally {
+      setCollecting(false);
+      console.log('📝 요약 생성 프로세스 완료');
+    }
+  };
+
   // 탭 변경
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -906,6 +978,16 @@ export default function App() {
             sx={{ mb: 2 }}
           >
             📁 새 컬렉션 만들기
+          </Button>
+
+          <Button
+            variant="outlined"
+            fullWidth
+            onClick={handleEnhanceSummaries}
+            sx={{ mb: 2 }}
+            disabled={collecting}
+          >
+            🤖 요약 자동 생성
           </Button>
 
           {/* 통계 */}

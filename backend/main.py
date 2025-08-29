@@ -26,15 +26,16 @@ try:
 except ImportError:
     pass
 
-# Import enhanced modules (updated to include hybrid collector)
+# Import enhanced modules (updated to include hybrid collector and auto summarizer)
 try:
     from database import db, init_db, get_db_connection
     from enhanced_news_collector import collector, collect_news_async
     from weekly_news_collector import collect_weekly_news_async
     from hybrid_data_collector import collect_hybrid_data_async, get_hybrid_collector_info
     from json_data_loader import json_loader
+    from auto_summarizer import generate_auto_summary
     ENHANCED_MODULES_AVAILABLE = True
-    logger.info("✅ Enhanced modules loaded successfully (including hybrid collector)")
+    logger.info("✅ Enhanced modules loaded successfully (including auto summarizer)")
 except ImportError as e:
     logger.error(f"❌ Failed to load enhanced modules: {e}")
     ENHANCED_MODULES_AVAILABLE = False
@@ -1043,6 +1044,100 @@ async def translate_article(article_id: int):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"번역 실패: {str(e)}")
+
+# ====== 자동 요약 생성 API ======
+
+@app.post("/api/enhance-summaries")
+async def enhance_summaries(
+    limit: int = Query(50, description="Number of articles to enhance"),
+    force: bool = Query(False, description="Force re-enhancement of all summaries")
+):
+    """Enhance summaries for articles that lack proper summaries"""
+    try:
+        await ensure_db_initialized()
+        
+        if not ENHANCED_MODULES_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Auto summarizer not available")
+        
+        # Get articles that need summary enhancement from JSON data
+        if json_loader.load_data():
+            articles_data = json_loader.articles_data[:limit] if limit else json_loader.articles_data
+            
+            enhanced_count = 0
+            failed_count = 0
+            
+            logger.info(f"🤖 Starting summary enhancement for {len(articles_data)} articles")
+            
+            for article in articles_data:
+                try:
+                    original_summary = article.get('summary', '')
+                    
+                    # Check if summary needs enhancement
+                    needs_summary = (
+                        not original_summary or 
+                        len(original_summary.strip()) < 20 or
+                        '[&#8230;]' in original_summary or
+                        '...' in original_summary[-10:] or
+                        force
+                    )
+                    
+                    if needs_summary:
+                        # Generate enhanced summary
+                        enhanced_summary = generate_auto_summary(
+                            title=article.get('title', ''),
+                            url=article.get('link', ''),
+                            source=article.get('source', '')
+                        )
+                        
+                        # Update the article data (in memory)
+                        article['summary'] = enhanced_summary
+                        article['enhanced'] = True
+                        enhanced_count += 1
+                        
+                        logger.debug(f"✅ Enhanced summary for: {article.get('title', '')[:50]}...")
+                    
+                except Exception as e:
+                    logger.warning(f"❌ Failed to enhance summary: {e}")
+                    failed_count += 1
+            
+            logger.info(f"🎉 Summary enhancement completed: {enhanced_count} enhanced, {failed_count} failed")
+            
+            return {
+                "message": f"Summary enhancement completed: {enhanced_count} articles enhanced",
+                "enhanced": enhanced_count,
+                "failed": failed_count,
+                "total": len(articles_data)
+            }
+        else:
+            raise HTTPException(status_code=404, detail="No JSON data loaded")
+        
+    except Exception as e:
+        logger.error(f"❌ Summary enhancement error: {e}")
+        raise HTTPException(status_code=500, detail=f"Summary enhancement failed: {str(e)}")
+
+@app.post("/api/generate-summary")
+async def generate_summary(
+    title: str,
+    url: str = "",
+    source: str = ""
+):
+    """Generate a summary for a given title and URL"""
+    try:
+        if not ENHANCED_MODULES_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Auto summarizer not available")
+        
+        enhanced_summary = generate_auto_summary(title=title, url=url, source=source)
+        
+        return {
+            "title": title,
+            "summary": enhanced_summary,
+            "source": source,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Summary generation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Summary generation failed: {str(e)}")
 
 # ====== 워드클라우드 생성 API ======
 
