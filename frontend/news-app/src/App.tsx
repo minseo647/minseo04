@@ -454,8 +454,14 @@ export default function App() {
     try {
       console.log('🚀 Starting news collection...');
       
-      // Use frontend newsService instead of backend API
+      // Use frontend newsService instead of backend API - FORCE fresh collection
       const startTime = Date.now();
+      console.log('🔄 Forcing fresh news collection (ignoring cache)...');
+      
+      // Clear existing cache to force fresh collection
+      localStorage.removeItem('news_articles');
+      localStorage.removeItem('news_last_update');
+      
       const collectedArticles = await newsService.collectNews(12); // Collect from 12 feeds
       const duration = (Date.now() - startTime) / 1000;
       
@@ -476,9 +482,10 @@ export default function App() {
         collectedArticles = validArticles; // Use validated articles
         // Show success message with details
         const total = collectedArticles.length;
-        const message = `✅ 뉴스 수집 완료 (${Math.round(duration)}초)\n` +
-          `• 수집된 기사: ${total}개\n` + 
-          `• 다양한 소스에서 최신 기사를 가져왔습니다.`;
+        const message = `✅ 신규 뉴스 수집 완료 (${Math.round(duration)}초)\n` +
+          `• 새로 수집된 기사: ${total}개\n` + 
+          `• RSS 피드에서 최신 기사를 가져왔습니다.\n` +
+          `• 캐시가 초기화되어 모든 데이터가 새롭습니다.`;
         
         alert(message);
         
