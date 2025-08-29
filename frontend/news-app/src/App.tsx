@@ -55,6 +55,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
 import { newsApi } from './api/newsApi';
+import { newsService } from './services/newsService';
 import type { Article, KeywordStats } from './api/newsApi';
 import { KeywordCloud } from './components/KeywordCloud';
 import { KeywordNetwork } from './components/KeywordNetwork';
@@ -424,49 +425,40 @@ export default function App() {
     setCurrentPage(1);
   }, [articles, searchTerm, selectedSource, dateFrom, dateTo, favoritesOnly]);
 
-  // Enhanced news collection with improved error handling
+  // Enhanced news collection using frontend newsService
   const collectNews = async () => {
     setCollecting(true);
     
     try {
       console.log('🚀 Starting news collection...');
       
-      // Use the immediate collection API for better user feedback
-      const collectionResult = await newsApi.collectNewsNow();
+      // Use frontend newsService instead of backend API
+      const startTime = Date.now();
+      const collectedArticles = await newsService.collectNews(12); // Collect from 12 feeds
+      const duration = (Date.now() - startTime) / 1000;
       
-      console.log('✅ Collection completed:', collectionResult);
+      console.log('✅ Collection completed:', collectedArticles);
       
-      if (collectionResult && collectionResult.status === 'success') {
+      if (collectedArticles && collectedArticles.length > 0) {
         // Show success message with details
-        const inserted = collectionResult.inserted || 0;
-        const updated = collectionResult.updated || 0;
-        const total = collectionResult.total_articles || 0;
-        const duration = collectionResult.duration ? ` (${Math.round(collectionResult.duration)}초)` : '';
-        
-        const message = `✅ 뉴스 수집 완료${duration}\n` +
-          `• 신규: ${inserted}개\n` + 
-          `• 업데이트: ${updated}개\n` +
-          `• 전체 기사: ${total}개`;
+        const total = collectedArticles.length;
+        const message = `✅ 뉴스 수집 완료 (${Math.round(duration)}초)\n` +
+          `• 수집된 기사: ${total}개\n` + 
+          `• 다양한 소스에서 최신 기사를 가져왔습니다.`;
         
         alert(message);
         
-        // Reload data with error handling for each request
-        try {
-          console.log('📰 Reloading articles...');
-          const articlesData = await newsApi.getArticles({ limit: 100 });
-          setArticles(articlesData);
-          console.log(`✅ Loaded ${articlesData.length} articles`);
-        } catch (articlesError) {
-          console.error('Failed to reload articles:', articlesError);
-        }
+        // Update local articles state
+        setArticles(collectedArticles);
+        console.log(`✅ Updated articles: ${collectedArticles.length}`);
         
+        // Update keyword stats from collected articles
         try {
-          console.log('🔍 Reloading keyword stats...');
-          const keywordStatsData = await newsApi.getKeywordStats();
-          setKeywordStats(keywordStatsData);
-          console.log(`✅ Loaded ${keywordStatsData.length} keywords`);
+          const stats = newsService.getKeywordStats();
+          setKeywordStats(stats);
+          console.log(`✅ Updated keyword stats: ${stats.length} keywords`);
         } catch (keywordsError) {
-          console.error('Failed to reload keywords:', keywordsError);
+          console.error('Failed to update keywords:', keywordsError);
         }
         
         // Update collections if they exist
@@ -477,16 +469,11 @@ export default function App() {
           console.log(`✅ Loaded ${collectionsData.length} collections`);
         } catch (collectionsError) {
           console.warn('Collections not available:', collectionsError);
-          // This is not critical, so don't show error to user
         }
         
-      } else if (collectionResult) {
-        console.error('Collection failed:', collectionResult);
-        const errorMsg = collectionResult.message || 
-          `뉴스 수집이 실패했습니다. 상태: ${collectionResult.status || 'unknown'}`;
-        alert(`❌ ${errorMsg}`);
       } else {
-        throw new Error('No response from collection API');
+        console.warn('No articles collected');
+        alert('⚠️ 뉴스를 수집했지만 새로운 기사가 없습니다.');
       }
       
     } catch (error) {
