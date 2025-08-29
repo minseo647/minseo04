@@ -73,10 +73,24 @@ export const KeywordNetwork: React.FC<KeywordNetworkProps> = ({ data }) => {
         ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
         ctx.fill();
 
-        // Node label
-        ctx.fillStyle = '#333';
+        // Node label background
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
+        const textWidth = ctx.measureText(node.label).width;
+        const textHeight = 12;
+        const padding = 2;
+        
+        // Semi-transparent background for better readability
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillRect(
+          node.x - textWidth / 2 - padding,
+          node.y - radius - textHeight - 5 - padding,
+          textWidth + padding * 2,
+          textHeight + padding * 2
+        );
+        
+        // Node label text
+        ctx.fillStyle = '#333';
         ctx.fillText(node.label, node.x, node.y - radius - 5);
       });
     };
@@ -135,6 +149,11 @@ export const KeywordNetwork: React.FC<KeywordNetworkProps> = ({ data }) => {
     <Paper sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>
         키워드 네트워크
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        • 원의 크기는 키워드 언급 빈도를 나타냅니다
+        • 선으로 연결된 키워드들은 함께 언급되는 경우가 많습니다
+        • 마우스를 올리면 상세 정보를 확인할 수 있습니다
       </Typography>
       <div ref={containerRef} style={{ minHeight: 500 }} />
     </Paper>

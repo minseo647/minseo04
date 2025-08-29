@@ -769,7 +769,8 @@ async def get_insights(
             time_series_data = defaultdict(int)
             category_counts = defaultdict(int)
             
-            end_date = datetime.now()
+            from datetime import timezone
+            end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=days_back)
             
             for article in articles:
@@ -851,7 +852,7 @@ async def get_insights(
                     WHERE created_at >= %s 
                     ORDER BY created_at DESC
                 """
-                params = (datetime.now() - timedelta(days=days_back),)
+                params = (datetime.now(timezone.utc) - timedelta(days=days_back),)
             else:
                 query = """
                     SELECT title, summary, keywords, published, created_at 
@@ -923,8 +924,8 @@ async def get_insights(
                 "total_articles": sum(time_series_data.values()),
                 "period": period,
                 "date_range": {
-                    "start": (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d'),
-                    "end": datetime.now().strftime('%Y-%m-%d')
+                    "start": (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime('%Y-%m-%d'),
+                    "end": datetime.now(timezone.utc).strftime('%Y-%m-%d')
                 }
             }
             
