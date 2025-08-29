@@ -8,6 +8,204 @@ import json
 import os
 import sys
 import logging
+import re
+
+# Regex for allowed characters in word cloud tokens  
+_ALLOWED_TOKEN_RE = re.compile(r"^[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3A-Za-z0-9\s\-\+\.\#_/·∙:()&%,]+$")
+
+# 불용어 (제거할 의미없는 단어들)
+STOPWORDS = {
+    # 한글 조사, 어미, 의미없는 단어들
+    '이', '가', '을', '를', '에', '의', '와', '과', '도', '은', '는', '에서', '으로', '로', '에게', '한테',
+    '하다', '되다', '있다', '없다', '같다', '다른', '새로운', '좋은', '나쁜', '크다', '작다', '많다', '적다',
+    '그', '이', '저', '그런', '이런', '저런', '것', '들', '등', '및', '또한', '하지만', '그러나', '따라서',
+    '때문에', '위해', '통해', '대해', '관한', '관련', '경우', '때', '중', '후', '전', '동안', '사이',
+    '년', '월', '일', '시간', '분', '초', '오늘', '어제', '내일', '지금', '현재', '과거', '미래',
+    '한국', '미국', '중국', '일본', '유럽', '아시아', '서울', '부산', '대구', '인천', '광주', '대전', '울산',
+    '회사', '기업', '업체', '업계', '산업', '분야', '시장', '고객', '사용자', '이용자', '소비자',
+    '발표', '공개', '출시', '런칭', '시작', '종료', '완료', '진행', '계획', '예정', '목표', '성과', '결과',
+    # 영어 불용어
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from',
+    'up', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'among',
+    'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+    'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'they',
+    'them', 'their', 'we', 'us', 'our', 'you', 'your', 'he', 'him', 'his', 'she', 'her', 'it', 'its',
+    # 한 글자 단어들
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'G', 'K', 'M', 'B', 'T', 'P'
+}
+
+# 공학/기술 관련 키워드 화이트리스트
+TECH_KEYWORDS = {
+    # AI/머신러닝
+    'AI', '인공지능', '머신러닝', '딥러닝', '신경망', 'CNN', 'RNN', 'LSTM', 'GAN', 'GPT', 'ChatGPT', 'OpenAI',
+    '자연어처리', 'NLP', '컴퓨터비전', '패턴인식', '강화학습', '지도학습', '비지도학습', '트랜스포머', 'BERT',
+    
+    # 소프트웨어/프로그래밍
+    'Python', 'Java', 'JavaScript', 'C++', 'C#', 'Go', 'Rust', 'Swift', 'Kotlin', 'React', 'Vue', 'Angular',
+    'Node.js', 'Django', 'Flask', 'Spring', '프레임워크', '라이브러리', 'API', 'REST', 'GraphQL', 'SDK',
+    '오픈소스', '깃허브', 'GitHub', '버전관리', 'Git', '코딩', '프로그래밍', '개발자', '소프트웨어',
+    
+    # 클라우드/인프라
+    'AWS', 'Azure', 'GCP', '구글클라우드', '클라우드', '서버리스', '마이크로서비스', 'Docker', '쿠버네티스', 'Kubernetes',
+    '컨테이너', '가상화', 'VM', '하이브리드클라우드', '멀티클라우드', 'DevOps', 'CI/CD', '배포', '운영',
+    
+    # 데이터/빅데이터
+    '빅데이터', '데이터사이언스', '데이터분석', '데이터마이닝', '데이터베이스', 'SQL', 'NoSQL', 'MongoDB',
+    'PostgreSQL', 'MySQL', '데이터웨어하우스', '데이터레이크', 'ETL', 'ELT', 'Apache', 'Hadoop', 'Spark',
+    '비즈니스인텔리전스', 'BI', '시각화', 'Tableau', '파워BI',
+    
+    # 네트워크/통신
+    '5G', '6G', 'LTE', 'WiFi', '블루투스', 'IoT', '사물인터넷', '무선통신', '네트워크', '라우터', '스위치',
+    'VPN', '방화벽', 'CDN', '엣지컴퓨팅', '엣지', '네트워킹', '프로토콜', 'TCP', 'UDP', 'HTTP', 'HTTPS',
+    
+    # 보안/사이버보안
+    '사이버보안', '보안', '암호화', '해킹', '피싱', '랜섬웨어', '멀웨어', '바이러스', '취약점', 'CISO',
+    '인증', '권한', 'SSO', '다중인증', 'MFA', '블록체인', '스마트컨트랙트', '비트코인', '이더리움',
+    
+    # 하드웨어/반도체
+    '반도체', '칩', '프로세서', 'CPU', 'GPU', 'NPU', 'TPU', '메모리', 'RAM', 'SSD', 'HDD',
+    '웨이퍼', '파운드리', 'TSMC', '삼성전자', 'SK하이닉스', '인텔', 'AMD', 'NVIDIA', '퀄컴',
+    'OLED', '디스플레이', 'LCD', '마이크로LED', '센서', '카메라모듈',
+    
+    # 자동차/모빌리티
+    '전기차', 'EV', '자율주행', '테슬라', '현대차', '기아', '모빌리티', '배터리', '리튬배터리',
+    'LiDAR', '레이더', '커넥티드카', 'V2X', '충전인프라', '급속충전',
+    
+    # 로봇/자동화
+    '로봇', '로보틱스', '자동화', 'RPA', '스마트팩토리', '산업자동화', '협동로봇', '드론', 'UAV',
+    '3D프린팅', '적층제조', 'CNC', '스마트제조',
+    
+    # 바이오/헬스케어
+    '바이오', '바이오테크', '제약', '신약개발', '유전자', 'DNA', 'RNA', 'mRNA', '백신', '항체',
+    '의료기기', '디지털헬스', '헬스케어', '원격의료', '텔레헬스', '웨어러블', '바이오센서',
+    '정밀의학', '개인맞춤의료', 'AI진단', '의료AI',
+    
+    # 에너지/환경
+    '태양광', '풍력', '수소', '연료전지', '에너지저장장치', 'ESS', '스마트그리드', '신재생에너지',
+    '탄소중립', '탄소포집', 'CCUS', '친환경', '그린테크', '청정기술',
+    
+    # 게임/엔터테인메트
+    '게임엔진', 'Unity', 'Unreal', 'VR', '가상현실', 'AR', '증강현실', 'MR', '혼합현실', '메타버스',
+    'NFT', 'P2E', '게임개발', '모바일게임', 'PC게임', '콘솔게임',
+    
+    # 핀테크/금융기술
+    '핀테크', '디지털뱅킹', '모바일페이', '간편결제', 'CBDC', '디지털화폐', '크라우드펀딩',
+    '로보어드바이저', '인슈어테크', 'RegTech', '디지털금융',
+    
+    # 기타 신기술
+    '양자컴퓨팅', '양자', '나노기술', '신소재', '탄소나노튜브', '그래핀', '슈퍼컴퓨터', 'HPC',
+    '엣지AI', '온디바이스AI', 'TinyML', '디지털트윈', 'API경제', 'SaaS', 'PaaS', 'IaaS'
+}
+
+def is_meaningful_token(token: str) -> bool:
+    """의미있는 토큰인지 확인"""
+    token = str(token).strip()
+    
+    # 길이 체크 (1글자 제외, 단 영문 약어는 허용)
+    if len(token) <= 1:
+        return False
+    
+    # 한글 1글자는 제외
+    if len(token) == 1 and '\uAC00' <= token <= '\uD7A3':
+        return False
+    
+    # 불용어 체크
+    if token.lower() in STOPWORDS:
+        return False
+    
+    # 숫자만으로 구성된 경우 제외 (단, 기술 관련 숫자는 허용)
+    if token.isdigit() and token not in TECH_KEYWORDS:
+        return False
+    
+    return True
+
+def is_tech_term(token: str) -> bool:
+    """기술 관련 용어인지 확인"""
+    token = str(token).strip()
+    
+    # 화이트리스트에 있는 경우
+    if token in TECH_KEYWORDS:
+        return True
+    
+    # 대소문자 무시하고 체크
+    if token.lower() in {kw.lower() for kw in TECH_KEYWORDS}:
+        return True
+    
+    # 부분 매칭 (기술 키워드가 포함된 경우)
+    for tech_kw in TECH_KEYWORDS:
+        if tech_kw.lower() in token.lower() or token.lower() in tech_kw.lower():
+            return True
+    
+    return False
+
+def _guess_korean_font_path(user_font_path: Optional[str] = None) -> Optional[str]:
+    if user_font_path and os.path.exists(user_font_path): return user_font_path
+    candidates = [
+        r"C:\Windows\Fonts\malgun.ttf",
+        r"C:\Windows\Fonts\malgunbd.ttf",
+        r"C:\Windows\Fonts\NanumGothic.ttf",
+        r"C:\Windows\Fonts\NanumBarunGothic.ttf",
+        r"C:\Windows\Fonts\NotoSansKR-Regular.otf",
+        r"C:\Windows\Fonts\NotoSansCJKkr-Regular.otf",
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/Library/Fonts/AppleGothic.ttf",
+        "/Library/Fonts/NanumGothic.otf",
+        "/Library/Fonts/NanumGothic.ttf",
+        "/Library/Fonts/NotoSansKR-Regular.otf",
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
+    ]
+    for p in candidates:
+        if os.path.exists(p): return p
+    return None
+
+def _filter_wc_tokens(keywords_freq: List[tuple], strict_filter: bool = True) -> List[tuple]:
+    """Filter wordcloud tokens based on allowed patterns and meaningfulness"""
+    if not keywords_freq: return []
+    cleaned = []
+    for k, v in keywords_freq:
+        ks = str(k).strip()
+        if not ks: continue
+        if _ALLOWED_TOKEN_RE.match(ks) is None: continue
+        if not is_meaningful_token(ks): continue
+        if strict_filter and not is_tech_term(ks): continue
+        cleaned.append((ks, int(v)))
+    return cleaned
+
+def render_wordcloud_wc(keywords_freq: List[tuple], font_path: Optional[str] = None, 
+                       auto_korean_font: bool = True, filter_unrenderables: bool = True):
+    """Render wordcloud with Korean font support"""
+    if not keywords_freq:
+        return None
+        
+    filtered = _filter_wc_tokens(keywords_freq, strict_filter=filter_unrenderables)
+    if not filtered:
+        return None
+        
+    fp = _guess_korean_font_path(font_path) if auto_korean_font else font_path
+    
+    try:
+        from wordcloud import WordCloud
+        import matplotlib.pyplot as plt
+        
+        wc = WordCloud(
+            width=1000, height=500,
+            background_color="white",
+            collocations=False,
+            font_path=fp
+        )
+        wc.generate_from_frequencies({k: int(v) for k, v in filtered})
+        
+        # Return the wordcloud object for further processing
+        return wc, fp
+        
+    except ImportError:
+        logger.error("WordCloud library not available")
+        return None
+
 from pathlib import Path
 from datetime import datetime, timedelta
 import asyncio
@@ -324,7 +522,7 @@ async def get_keyword_stats(limit: int = Query(50, le=200), use_json: bool = Que
                             
                         for kw in keywords:
                             kw = str(kw).strip().strip('"').strip("'")
-                            if kw and len(kw) > 1:
+                            if kw and is_meaningful_token(kw) and is_tech_term(kw):
                                 keyword_counter[kw] = keyword_counter.get(kw, 0) + 1
                     except Exception:
                         continue
@@ -359,7 +557,7 @@ async def get_keyword_stats(limit: int = Query(50, le=200), use_json: bool = Que
                             
                             for kw in keywords:
                                 kw = kw.strip()
-                                if kw:
+                                if kw and is_meaningful_token(kw) and is_tech_term(kw):
                                     keyword_counter[kw] = keyword_counter.get(kw, 0) + 1
                     except Exception:
                         continue
@@ -381,10 +579,33 @@ async def get_keyword_network(limit: int = Query(30, le=100)):
     
     keyword_docs = []
     for row in cursor.fetchall():
-        keywords = row[0].split(',') if row[0] else []
-        keywords = [kw.strip() for kw in keywords if kw.strip()]
-        if keywords:
-            keyword_docs.append(keywords)
+        if row[0]:
+            try:
+                # JSON 형태의 키워드 파싱
+                if row[0].startswith('['):
+                    keywords = json.loads(row[0])
+                else:
+                    keywords = row[0].split(',')
+                    
+                # 필터링된 키워드만 선택
+                filtered_keywords = []
+                for kw in keywords:
+                    kw = str(kw).strip().strip('"').strip("'")
+                    if kw and is_meaningful_token(kw) and is_tech_term(kw):
+                        filtered_keywords.append(kw)
+                        
+                if filtered_keywords:
+                    keyword_docs.append(filtered_keywords)
+            except:
+                # 기본 분할 방식으로 폴백
+                keywords = row[0].split(',')
+                filtered_keywords = []
+                for kw in keywords:
+                    kw = kw.strip()
+                    if kw and is_meaningful_token(kw) and is_tech_term(kw):
+                        filtered_keywords.append(kw)
+                if filtered_keywords:
+                    keyword_docs.append(filtered_keywords)
     
     conn.close()
     
@@ -408,7 +629,13 @@ async def get_keyword_network(limit: int = Query(30, le=100)):
     
     for (kw1, kw2), weight in cooccurrence.items():
         if kw1 in top_keyword_set and kw2 in top_keyword_set and weight > 1:
-            edges.append({"from": kw1, "to": kw2, "value": weight})
+            edges.append({
+                "from": kw1, 
+                "to": kw2, 
+                "value": weight,
+                "label": f"{kw1} ↔ {kw2}",
+                "title": f"{kw1}와(과) {kw2}가 함께 나타난 횟수: {weight}회"
+            })
     
     return {"nodes": nodes, "edges": edges}
 
@@ -1206,48 +1433,44 @@ async def generate_wordcloud(
                 
                 for keyword in keywords:
                     keyword = str(keyword).strip()
-                    if keyword and len(keyword) > 1:
+                    if keyword and is_meaningful_token(keyword) and is_tech_term(keyword):
                         keyword_freq[keyword] += 1
         
         if not keyword_freq:
-            # 기본 키워드 제공
+            # 기본 기술 키워드 제공 (기술 관련 단어만)
             keyword_freq = Counter({
                 'AI': 50, '인공지능': 45, '딥러닝': 35, '머신러닝': 30,
-                '블록체인': 25, '클라우드': 20, '보안': 18, '스타트업': 15,
-                '투자': 12, '기술': 40, 'IT': 35, '개발': 22, '데이터': 28
+                '블록체인': 25, '클라우드': 20, '보안': 18, '소프트웨어': 15,
+                '데이터베이스': 12, '프로그래밍': 40, '개발자': 35, 'API': 22, 
+                '빅데이터': 28, '5G': 25, 'IoT': 20, '반도체': 30, '전기차': 25
             })
         
-        # 상위 키워드만 선택
-        top_keywords = dict(keyword_freq.most_common(limit))
+        # 상위 키워드만 선택하고 튜플 형태로 변환
+        top_keywords_list = list(keyword_freq.most_common(limit))
         
-        # 한글 폰트 설정 (시스템에서 사용 가능한 폰트 찾기)
-        font_path = None
-        korean_fonts = [
-            '/System/Library/Fonts/AppleSDGothicNeo.ttc',  # macOS
-            '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',  # Ubuntu
-            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # 기본 폰트
-            'C:\\Windows\\Fonts\\malgun.ttf',  # Windows
-            'NanumGothic',  # 시스템 폰트명
-        ]
+        # 새로운 한글 지원 워드클라우드 생성 함수 사용
+        wc_result = render_wordcloud_wc(
+            top_keywords_list, 
+            auto_korean_font=True, 
+            filter_unrenderables=True
+        )
         
-        for font in korean_fonts:
-            if os.path.exists(font):
-                font_path = font
-                break
+        if wc_result is None:
+            raise HTTPException(status_code=500, detail="워드클라우드 생성 실패")
+            
+        wordcloud, font_path = wc_result
         
-        # WordCloud 생성
-        wordcloud = WordCloud(
-            font_path=font_path,
-            width=width,
-            height=height,
-            background_color='white',
-            max_words=limit,
-            relative_scaling=0.5,
-            colormap='viridis',
-            min_font_size=12,
-            max_font_size=80,
-            prefer_horizontal=0.7
-        ).generate_from_frequencies(top_keywords)
+        # 크기 조정을 위해 다시 설정
+        wordcloud.width = width
+        wordcloud.height = height
+        wordcloud.max_words = limit
+        wordcloud.relative_scaling = 0.5
+        wordcloud.colormap = 'viridis'
+        wordcloud.min_font_size = 12
+        wordcloud.max_font_size = 80
+        wordcloud.prefer_horizontal = 0.7
+        
+        logger.info(f"✅ 워드클라우드 생성 완료 - 폰트: {font_path or '기본(한글 미지원일 수 있음)'}")
         
         # 이미지를 바이트로 변환
         img_buffer = io.BytesIO()
@@ -1263,13 +1486,16 @@ async def generate_wordcloud(
         
         return {
             "wordcloud_image": f"data:image/png;base64,{img_base64}",
-            "keyword_count": len(top_keywords),
-            "top_keywords": list(top_keywords.keys())[:20]
+            "keyword_count": len(top_keywords_list),
+            "top_keywords": [k for k, _ in top_keywords_list[:20]],
+            "font_path": font_path,
+            "korean_support": font_path is not None
         }
         
     except Exception as e:
         logger.error(f"워드클라우드 생성 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f"워드클라우드 생성 실패: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn

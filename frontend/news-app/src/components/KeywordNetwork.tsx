@@ -49,6 +49,17 @@ export const KeywordNetwork: React.FC<KeywordNetworkProps> = ({ data }) => {
           ctx.moveTo(source.x, source.y);
           ctx.lineTo(target.x, target.y);
           ctx.stroke();
+          
+          // Draw edge label
+          const midX = (source.x + target.x) / 2;
+          const midY = (source.y + target.y) / 2;
+          
+          ctx.fillStyle = '#666';
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillRect(midX - 10, midY - 7, 20, 14);
+          ctx.fillStyle = '#fff';
+          ctx.fillText(edge.value?.toString() || '1', midX, midY + 3);
         }
       });
 
@@ -89,9 +100,29 @@ export const KeywordNetwork: React.FC<KeywordNetworkProps> = ({ data }) => {
         }
       });
 
+      // Find nearest edge
+      let nearestEdge: any = null;
+      let minEdgeDist = Infinity;
+      data.edges.forEach(edge => {
+        const source = nodes.find(n => n.id === edge.from);
+        const target = nodes.find(n => n.id === edge.to);
+        if (source && target) {
+          const midX = (source.x + target.x) / 2;
+          const midY = (source.y + target.y) / 2;
+          const dist = Math.sqrt(Math.pow(midX - x, 2) + Math.pow(midY - y, 2));
+          if (dist < minEdgeDist && dist < 15) {
+            minEdgeDist = dist;
+            nearestEdge = edge;
+          }
+        }
+      });
+
       if (nearestNode) {
         canvas.style.cursor = 'pointer';
-        canvas.title = `${nearestNode.label} (${nearestNode.value})`;
+        canvas.title = `${nearestNode.label} (${nearestNode.value}회 언급)`;
+      } else if (nearestEdge) {
+        canvas.style.cursor = 'pointer';
+        canvas.title = nearestEdge.title || `${nearestEdge.from} ↔ ${nearestEdge.to} (${nearestEdge.value}회 동시 언급)`;
       } else {
         canvas.style.cursor = 'default';
         canvas.title = '';

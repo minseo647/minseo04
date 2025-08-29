@@ -1188,7 +1188,7 @@ export default function App() {
             <Alert severity="info">분석할 데이터가 없습니다.</Alert>
           ) : (
             <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12} md={4}>
                 <Typography variant="h6" gutterBottom>🔥 인기 키워드 TOP 20</Typography>
                 <Paper sx={{ p: 2, maxHeight: 400, overflow: 'auto' }}>
                   <List dense>
@@ -1203,15 +1203,8 @@ export default function App() {
                   </List>
                 </Paper>
               </Grid>
-              
-              <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom>📈 키워드 분포</Typography>
-                <Paper sx={{ p: 2, height: 400 }}>
-                  <KeywordCloud data={keywordStats} onError={(error) => console.error('워드클라우드 오류:', error)} />
-                </Paper>
-              </Grid>
 
-              <Grid item xs={12}>
+              <Grid item xs={12} md={8}>
                 <Typography variant="h6" gutterBottom>🕸️ 키워드 관계 네트워크</Typography>
                 <Paper sx={{ p: 2, height: 500 }}>
                   <KeywordNetworkContainer />
