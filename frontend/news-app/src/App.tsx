@@ -462,7 +462,7 @@ export default function App() {
       localStorage.removeItem('news_articles');
       localStorage.removeItem('news_last_update');
       
-      const collectedArticles = await newsService.collectNews(12); // Collect from 12 feeds
+      const collectedArticles = await newsService.collectNews(25); // Collect from 25 feeds (all sources)
       const duration = (Date.now() - startTime) / 1000;
       
       console.log('✅ Collection completed:', collectedArticles);
