@@ -8,7 +8,7 @@ export interface Article {
   source: string;
   summary?: string;
   keywords?: string[];
-  is_favorite?: boolean;
+  is_favorite: boolean;
 }
 
 export interface KeywordStats {

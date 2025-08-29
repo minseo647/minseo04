@@ -479,9 +479,9 @@ export default function App() {
       console.log(`🔍 Validation: ${collectedArticles?.length || 0} collected, ${validArticles.length} valid`);
 
       if (validArticles && validArticles.length > 0) {
-        collectedArticles = validArticles; // Use validated articles
+        const finalArticles = validArticles; // Use validated articles
         // Show success message with details
-        const total = collectedArticles.length;
+        const total = finalArticles.length;
         const message = `✅ 신규 뉴스 수집 완료 (${Math.round(duration)}초)\n` +
           `• 새로 수집된 기사: ${total}개\n` + 
           `• RSS 피드에서 최신 기사를 가져왔습니다.\n` +
@@ -490,19 +490,19 @@ export default function App() {
         alert(message);
         
         // Update local articles state
-        setArticles(collectedArticles);
+        setArticles(finalArticles);
         // Immediately update filtered articles to bypass useEffect delay
-        setFilteredArticles(collectedArticles);
-        console.log(`✅ Updated articles: ${collectedArticles.length}`);
+        setFilteredArticles(finalArticles);
+        console.log(`✅ Updated articles: ${finalArticles.length}`);
         
         // Debug: Log first few articles
-        console.log('🔍 First 3 collected articles:', collectedArticles.slice(0, 3));
-        console.log('🔍 collectedArticles data structure check:', {
-          firstArticle: collectedArticles[0],
-          hasId: collectedArticles[0]?.id,
-          hasTitle: collectedArticles[0]?.title,
-          hasLink: collectedArticles[0]?.link,
-          hasSource: collectedArticles[0]?.source
+        console.log('🔍 First 3 collected articles:', finalArticles.slice(0, 3));
+        console.log('🔍 finalArticles data structure check:', {
+          firstArticle: finalArticles[0],
+          hasId: finalArticles[0]?.id,
+          hasTitle: finalArticles[0]?.title,
+          hasLink: finalArticles[0]?.link,
+          hasSource: finalArticles[0]?.source
         });
         
         // Force re-render by using setTimeout to ensure state update
