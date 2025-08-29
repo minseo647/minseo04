@@ -10,6 +10,39 @@ import sys
 import logging
 import re
 
+# 대분류/소분류 카테고리 정의
+CATEGORIES: Dict[str, Dict[str, List[str]]] = {
+    "첨단 제조·기술 산업": {
+        "반도체 분야": ["반도체", "메모리", "시스템 반도체", "파운드리", "소자", "웨이퍼", "노광", "EUV", "장비", "소재"],
+        "자동차 분야": ["자동차", "내연기관", "전기차", "자율주행", "모빌리티", "현대차", "테슬라", "배터리카"],
+        "이차전지 분야": ["이차전지", "배터리", "ESS", "양극재", "음극재", "전해질", "분리막"],
+        "디스플레이 분야": ["디스플레이", "OLED", "QD", "마이크로 LED", "LCD"],
+        "로봇·스마트팩토리 분야": ["로봇", "스마트팩토리", "산업자동화", "협동로봇"]
+    },
+    "에너지·환경 산업": {
+        "에너지 분야": ["석유", "가스", "원자력", "태양광", "풍력", "수소", "신재생에너지"],
+        "환경·탄소중립 분야": ["탄소중립", "폐기물", "친환경", "수처리", "CCUS", "재활용"]
+    },
+    "디지털·ICT 산업": {
+        "AI 분야": ["AI", "인공지능", "머신러닝", "딥러닝", "생성형", "챗GPT", "로보틱스"],
+        "ICT·통신 분야": ["5G", "6G", "통신", "네트워크", "인프라", "클라우드"],
+        "소프트웨어·플랫폼": ["소프트웨어", "메타버스", "SaaS", "보안", "핀테크", "플랫폼"]
+    },
+    "바이오·헬스케어 산업": {
+        "바이오·제약 분야": ["바이오", "제약", "신약", "바이오시밀러", "세포치료제", "유전자치료제"],
+        "의료기기·헬스케어": ["의료기기", "헬스케어", "디지털 헬스", "웨어러블", "원격진료"]
+    },
+    "소재·화학 산업": {
+        "첨단 소재": ["탄소소재", "나노소재", "고분자", "복합소재"],
+        "정밀화학·석유화학": ["정밀화학", "석유화학", "케미컬", "특수가스", "반도체용 케미컬"]
+    },
+    "인프라·기반 산업": {
+        "철강·조선·건설": ["철강", "조선", "건설", "스마트건설", "친환경 선박"],
+        "물류·유통": ["물류", "유통", "전자상거래", "스마트 물류", "공급망"],
+        "농업·식품": ["농업", "스마트팜", "대체식품", "식품"]
+    }
+}
+
 # Regex for allowed characters in word cloud tokens  
 _ALLOWED_TOKEN_RE = re.compile(r"^[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7A3A-Za-z0-9\s\-\+\.\#_/·∙:()&%,]+$")
 
@@ -371,6 +404,8 @@ async def get_articles(
     favorites_only: bool = False,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    major_category: Optional[str] = None,
+    minor_category: Optional[str] = None,
     use_json: bool = Query(True, description="Use JSON data as default")
 ):
     """Get articles with filtering and pagination (JSON data by default)"""
@@ -389,6 +424,35 @@ async def get_articles(
             # 소스 필터링
             if source:
                 articles = [a for a in articles if a.get('source') == source]
+            
+            # 카테고리 필터링
+            if major_category or minor_category:
+                def article_matches_category(article):
+                    article_text = f"{article.get('title', '')} {article.get('summary', '')} {article.get('keywords', '')}".lower()
+                    
+                    # 소분류가 선택된 경우
+                    if minor_category and minor_category in CATEGORIES.get(major_category or '', {}):
+                        # 대분류와 소분류 모두 선택된 경우
+                        keywords = CATEGORIES[major_category][minor_category]
+                    elif minor_category:
+                        # 소분류만 선택된 경우 (모든 대분류에서 찾기)
+                        keywords = []
+                        for major_cat in CATEGORIES.values():
+                            if minor_category in major_cat:
+                                keywords = major_cat[minor_category]
+                                break
+                    elif major_category:
+                        # 대분류만 선택된 경우 (해당 대분류의 모든 키워드)
+                        keywords = []
+                        for minor_cat in CATEGORIES[major_category].values():
+                            keywords.extend(minor_cat)
+                    else:
+                        return True
+                    
+                    # 키워드 매칭
+                    return any(keyword.lower() in article_text for keyword in keywords)
+                
+                articles = [a for a in articles if article_matches_category(a)]
             
             # 즐겨찾기 필터링 (JSON 데이터에서는 DB의 즐겨찾기 정보와 결합)
             if favorites_only:
@@ -498,6 +562,219 @@ async def get_sources(use_json: bool = Query(True, description="Use JSON data as
     except Exception as e:
         logger.error(f"Error fetching sources: {e}")
         return []
+
+@app.get("/api/categories")
+async def get_categories():
+    """Get available categories (major and minor categories)"""
+    try:
+        return {
+            "categories": CATEGORIES,
+            "major_categories": list(CATEGORIES.keys()),
+            "all_minor_categories": {
+                minor_cat: keywords 
+                for major_cat in CATEGORIES.values() 
+                for minor_cat, keywords in major_cat.items()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching categories: {e}")
+        return {"categories": {}, "major_categories": [], "all_minor_categories": {}}
+
+@app.get("/api/insights")
+async def get_insights(
+    period: str = Query("daily", description="Time period: daily, weekly, monthly"),
+    days_back: int = Query(30, description="Number of days to look back"),
+    use_json: bool = Query(True, description="Use JSON data as default")
+):
+    """Get insights data for charts"""
+    try:
+        from datetime import datetime, timedelta
+        from collections import defaultdict
+        
+        # 기본적으로 JSON 데이터 사용
+        if use_json:
+            articles = json_loader.get_articles(limit=10000)  # 충분한 양의 데이터
+            
+            if not articles:
+                return {
+                    "time_series": [],
+                    "category_counts": {},
+                    "total_articles": 0,
+                    "period": period
+                }
+            
+            # 날짜별 기사 수 계산
+            time_series_data = defaultdict(int)
+            category_counts = defaultdict(int)
+            
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days_back)
+            
+            for article in articles:
+                try:
+                    # 기사 날짜 파싱
+                    article_date = datetime.fromisoformat(article.get('published', '').replace('Z', '+00:00'))
+                    
+                    # 지정된 기간 내의 기사만 처리
+                    if start_date <= article_date <= end_date:
+                        # 시간 단위별 그룹핑
+                        if period == "daily":
+                            date_key = article_date.strftime('%Y-%m-%d')
+                        elif period == "weekly":
+                            # 주 시작일 (월요일)로 그룹핑
+                            week_start = article_date - timedelta(days=article_date.weekday())
+                            date_key = week_start.strftime('%Y-%m-%d')
+                        elif period == "monthly":
+                            date_key = article_date.strftime('%Y-%m')
+                        else:
+                            date_key = article_date.strftime('%Y-%m-%d')
+                        
+                        time_series_data[date_key] += 1
+                        
+                        # 카테고리별 분류
+                        article_text = f"{article.get('title', '')} {article.get('summary', '')} {article.get('keywords', '')}".lower()
+                        
+                        # 각 대분류에 대해 매칭 확인
+                        matched_category = None
+                        for major_category, subcategories in CATEGORIES.items():
+                            for subcategory, keywords in subcategories.items():
+                                if any(keyword.lower() in article_text for keyword in keywords):
+                                    matched_category = major_category
+                                    break
+                            if matched_category:
+                                break
+                        
+                        if matched_category:
+                            category_counts[matched_category] += 1
+                        else:
+                            category_counts["기타"] += 1
+                            
+                except Exception as e:
+                    logger.debug(f"Error processing article date: {e}")
+                    continue
+            
+            # 시계열 데이터 정렬
+            sorted_time_series = []
+            if time_series_data:
+                sorted_dates = sorted(time_series_data.keys())
+                for date_key in sorted_dates:
+                    sorted_time_series.append({
+                        "date": date_key,
+                        "count": time_series_data[date_key]
+                    })
+            
+            return {
+                "time_series": sorted_time_series,
+                "category_counts": dict(category_counts),
+                "total_articles": sum(time_series_data.values()),
+                "period": period,
+                "date_range": {
+                    "start": start_date.strftime('%Y-%m-%d'),
+                    "end": end_date.strftime('%Y-%m-%d')
+                }
+            }
+        
+        else:
+            # DB 데이터 사용
+            await ensure_db_initialized()
+            
+            if not ENHANCED_MODULES_AVAILABLE:
+                return {"time_series": [], "category_counts": {}, "total_articles": 0, "period": period}
+            
+            # DB에서 최근 기사들 가져오기
+            if db.db_type == "postgresql":
+                query = """
+                    SELECT title, summary, keywords, published, created_at 
+                    FROM articles 
+                    WHERE created_at >= %s 
+                    ORDER BY created_at DESC
+                """
+                params = (datetime.now() - timedelta(days=days_back),)
+            else:
+                query = """
+                    SELECT title, summary, keywords, published, created_at 
+                    FROM articles 
+                    WHERE created_at >= datetime('now', '-{} days') 
+                    ORDER BY created_at DESC
+                """.format(days_back)
+                params = ()
+            
+            articles = db.execute_query(query, params)
+            
+            time_series_data = defaultdict(int)
+            category_counts = defaultdict(int)
+            
+            for article in articles:
+                try:
+                    # created_at 또는 published 사용
+                    date_str = article.get('created_at') or article.get('published')
+                    if date_str:
+                        article_date = datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
+                        
+                        # 시간 단위별 그룹핑
+                        if period == "daily":
+                            date_key = article_date.strftime('%Y-%m-%d')
+                        elif period == "weekly":
+                            week_start = article_date - timedelta(days=article_date.weekday())
+                            date_key = week_start.strftime('%Y-%m-%d')
+                        elif period == "monthly":
+                            date_key = article_date.strftime('%Y-%m')
+                        else:
+                            date_key = article_date.strftime('%Y-%m-%d')
+                        
+                        time_series_data[date_key] += 1
+                        
+                        # 카테고리별 분류
+                        article_text = f"{article.get('title', '')} {article.get('summary', '')} {article.get('keywords', '')}".lower()
+                        
+                        matched_category = None
+                        for major_category, subcategories in CATEGORIES.items():
+                            for subcategory, keywords in subcategories.items():
+                                if any(keyword.lower() in article_text for keyword in keywords):
+                                    matched_category = major_category
+                                    break
+                            if matched_category:
+                                break
+                        
+                        if matched_category:
+                            category_counts[matched_category] += 1
+                        else:
+                            category_counts["기타"] += 1
+                            
+                except Exception as e:
+                    logger.debug(f"Error processing article: {e}")
+                    continue
+            
+            # 결과 정렬
+            sorted_time_series = []
+            if time_series_data:
+                sorted_dates = sorted(time_series_data.keys())
+                for date_key in sorted_dates:
+                    sorted_time_series.append({
+                        "date": date_key,
+                        "count": time_series_data[date_key]
+                    })
+            
+            return {
+                "time_series": sorted_time_series,
+                "category_counts": dict(category_counts),
+                "total_articles": sum(time_series_data.values()),
+                "period": period,
+                "date_range": {
+                    "start": (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d'),
+                    "end": datetime.now().strftime('%Y-%m-%d')
+                }
+            }
+            
+    except Exception as e:
+        logger.error(f"Error getting insights: {e}")
+        return {
+            "time_series": [],
+            "category_counts": {},
+            "total_articles": 0,
+            "period": period,
+            "error": str(e)
+        }
 
 @app.get("/api/keywords/stats")
 async def get_keyword_stats(limit: int = Query(50, le=200), use_json: bool = Query(True, description="Use JSON data as default")):

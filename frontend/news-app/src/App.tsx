@@ -60,10 +60,11 @@ import type { Article, KeywordStats } from './api/newsApi';
 import { KeywordCloud } from './components/KeywordCloud';
 import { KeywordNetwork } from './components/KeywordNetwork';
 import { ColorPalette } from './components/ColorPalette';
+import { InsightsCharts } from './components/InsightsCharts';
 import { useThemeProvider } from './hooks/useTheme';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { calculateReadingTime, formatReadingTime } from './utils/readingTime';
-import { categories } from './config';
+import { categories, getMajorCategories, getMinorCategories, getAllMinorCategories, type MajorCategory, STOPWORDS, TECH_KEYWORDS, isMeaningfulToken, isTechTerm } from './config';
 
 
 interface TabPanelProps {
@@ -331,8 +332,8 @@ export default function App() {
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(null);
-  const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(null);
+  const [selectedMajorCategory, setSelectedMajorCategory] = useState<MajorCategory | null>(null);
+  const [selectedMinorCategory, setSelectedMinorCategory] = useState<string | null>(null);
   
   // 페이지네이션
   const [currentPage, setCurrentPage] = useState(1);
@@ -371,7 +372,12 @@ export default function App() {
         
         // 백엔드 API에서 JSON 데이터 로드
         try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/articles?limit=1000&use_json=true`);
+          const params = new URLSearchParams({
+            limit: '1000',
+            use_json: 'true'
+          });
+          
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/articles?${params}`);
           if (response.ok) {
             const backendArticles = await response.json();
             console.log(`✅ 백엔드에서 ${backendArticles.length}개 기사 로드 성공`);
@@ -393,15 +399,32 @@ export default function App() {
             
             setArticles(formattedArticles);
             
-            // 키워드 통계 생성
+            // 키워드 통계 생성 (필터링 적용)
             const keywordCounter: Record<string, number> = {};
             formattedArticles.forEach((article: any) => {
               if (article.keywords && Array.isArray(article.keywords)) {
                 article.keywords.forEach((keyword: string) => {
-                  if (keyword && keyword.trim()) {
-                    keywordCounter[keyword.trim()] = (keywordCounter[keyword.trim()] || 0) + 1;
+                  const cleanKeyword = keyword.trim();
+                  if (cleanKeyword && isMeaningfulToken(cleanKeyword) && isTechTerm(cleanKeyword)) {
+                    keywordCounter[cleanKeyword] = (keywordCounter[cleanKeyword] || 0) + 1;
                   }
                 });
+              } else if (typeof article.keywords === 'string' && article.keywords) {
+                // JSON 문자열이나 쉼표로 구분된 키워드 처리
+                try {
+                  const keywords = article.keywords.startsWith('[') 
+                    ? JSON.parse(article.keywords) 
+                    : article.keywords.split(',');
+                  
+                  keywords.forEach((keyword: string) => {
+                    const cleanKeyword = keyword.trim().replace(/['"]/g, '');
+                    if (cleanKeyword && isMeaningfulToken(cleanKeyword) && isTechTerm(cleanKeyword)) {
+                      keywordCounter[cleanKeyword] = (keywordCounter[cleanKeyword] || 0) + 1;
+                    }
+                  });
+                } catch (e) {
+                  console.debug('키워드 파싱 오류:', e);
+                }
               }
             });
             
@@ -452,70 +475,103 @@ export default function App() {
     loadInitialData();
   }, []);
 
-  // 필터 적용
+  // 필터 적용 - 백엔드 API 호출로 변경
   useEffect(() => {
-    console.log('🔍 Filter useEffect triggered - articles:', articles.length, 'searchTerm:', searchTerm, 'selectedSource:', selectedSource);
-    let filtered = [...articles];
-
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      const searchKeywords = searchLower.split(' or ').map(k => k.trim()).filter(k => k);
-
-      if (searchKeywords.length > 1) {
-        // Handle OR condition for category keywords
-        filtered = filtered.filter(article => {
-          return searchKeywords.some(keyword => 
-            article.title?.toLowerCase().includes(keyword) ||
-            article.summary?.toLowerCase().includes(keyword) ||
-            (Array.isArray(article.keywords) && article.keywords.some(k => k.toLowerCase().includes(keyword))) ||
-            (typeof article.keywords === 'string' && article.keywords.toLowerCase().includes(keyword))
-          );
+    const applyFilters = async () => {
+      console.log('🔍 Filter useEffect triggered - searchTerm:', searchTerm, 'selectedSource:', selectedSource, 'categories:', selectedMajorCategory, selectedMinorCategory);
+      
+      try {
+        const params = new URLSearchParams({
+          limit: '1000',
+          offset: '0',
+          use_json: 'true'
         });
-      } else {
-        // Handle single search term
-        filtered = filtered.filter(article => 
-          article.title?.toLowerCase().includes(searchLower) ||
-          article.summary?.toLowerCase().includes(searchLower) ||
-          (typeof article.keywords === 'string' 
-            ? article.keywords.toLowerCase().includes(searchLower)
-            : Array.isArray(article.keywords) 
-              ? article.keywords.some(k => k.toLowerCase().includes(searchLower))
-              : false)
-        );
+        
+        if (searchTerm) params.set('search', searchTerm);
+        if (selectedSource && selectedSource !== 'all') params.set('source', selectedSource);
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
+        if (favoritesOnly) params.set('favorites_only', 'true');
+        if (selectedMajorCategory) params.set('major_category', selectedMajorCategory);
+        if (selectedMinorCategory) params.set('minor_category', selectedMinorCategory);
+
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/articles?${params}`);
+        
+        if (response.ok) {
+          const backendArticles = await response.json();
+          
+          // 백엔드 데이터를 프론트엔드 형식으로 변환
+          const formattedArticles = backendArticles.map((article: any, index: number) => ({
+            id: article.id || index + 1,
+            title: article.title || '제목 없음',
+            link: article.link || '#',
+            published: article.published || new Date().toISOString(),
+            source: article.source || '알 수 없음',
+            summary: article.summary || '',
+            keywords: Array.isArray(article.keywords) ? article.keywords :
+                      typeof article.keywords === 'string' ? 
+                      (article.keywords.startsWith('[') ? JSON.parse(article.keywords) : article.keywords.split(',').map(k => k.trim())) : 
+                      [],
+            is_favorite: article.is_favorite || false
+          }));
+          
+          console.log('🔍 Filtered articles from backend:', formattedArticles.length);
+          setFilteredArticles(formattedArticles);
+        } else {
+          // 백엔드 실패시 프론트엔드 필터링으로 폴백
+          console.log('⚠️ Backend filtering failed, using frontend filtering');
+          let filtered = [...articles];
+
+          if (searchTerm) {
+            const searchLower = searchTerm.toLowerCase();
+            filtered = filtered.filter(article => 
+              article.title?.toLowerCase().includes(searchLower) ||
+              article.summary?.toLowerCase().includes(searchLower) ||
+              (typeof article.keywords === 'string' 
+                ? article.keywords.toLowerCase().includes(searchLower)
+                : Array.isArray(article.keywords) 
+                  ? article.keywords.some(k => k.toLowerCase().includes(searchLower))
+                  : false)
+            );
+          }
+
+          if (selectedSource && selectedSource !== 'all') {
+            filtered = filtered.filter(article => article.source === selectedSource);
+          }
+
+          if (dateFrom) {
+            filtered = filtered.filter(article => 
+              new Date(article.published) >= new Date(dateFrom)
+            );
+          }
+
+          if (dateTo) {
+            filtered = filtered.filter(article => 
+              new Date(article.published) <= new Date(dateTo)
+            );
+          }
+
+          if (favoritesOnly) {
+            filtered = filtered.filter(article => article.is_favorite);
+          }
+
+          filtered.sort((a, b) => 
+            new Date(b.published).getTime() - new Date(a.published).getTime()
+          );
+          
+          setFilteredArticles(filtered);
+        }
+        
+      } catch (error) {
+        console.error('Error applying filters:', error);
+        setFilteredArticles(articles); // 오류시 전체 기사 표시
       }
-    }
+      
+      setCurrentPage(1);
+    };
 
-    if (selectedSource && selectedSource !== 'all') {
-      filtered = filtered.filter(article => article.source === selectedSource);
-    }
-
-    if (dateFrom) {
-      filtered = filtered.filter(article => 
-        new Date(article.published) >= new Date(dateFrom)
-      );
-    }
-
-    if (dateTo) {
-      filtered = filtered.filter(article => 
-        new Date(article.published) <= new Date(dateTo)
-      );
-    }
-
-    if (favoritesOnly) {
-      filtered = filtered.filter(article => article.is_favorite);
-    }
-
-    // Sort by published date (newest first)
-    filtered.sort((a, b) => 
-      new Date(b.published).getTime() - new Date(a.published).getTime()
-    );
-
-    console.log('🔍 After filtering - filtered articles:', filtered.length);
-    console.log('🔍 Filter conditions - searchTerm:', searchTerm, 'selectedSource:', selectedSource, 'dateFrom:', dateFrom, 'dateTo:', dateTo, 'favoritesOnly:', favoritesOnly);
-    
-    setFilteredArticles(filtered);
-    setCurrentPage(1);
-  }, [articles, searchTerm, selectedSource, dateFrom, dateTo, favoritesOnly]);
+    applyFilters();
+  }, [articles, searchTerm, selectedSource, dateFrom, dateTo, favoritesOnly, selectedMajorCategory, selectedMinorCategory]);
 
   // Enhanced news collection using backend API
   const collectNews = async () => {
@@ -572,15 +628,31 @@ export default function App() {
             setArticles(formattedArticles);
             console.log(`✅ [데이터 수집 현황] ${formattedArticles.length}개 기사로 업데이트 완료`);
             
-            // 키워드 통계 재생성
+            // 키워드 통계 재생성 (필터링 적용)
             const keywordCounter: Record<string, number> = {};
             formattedArticles.forEach((article: any) => {
               if (article.keywords && Array.isArray(article.keywords)) {
                 article.keywords.forEach((keyword: string) => {
-                  if (keyword && keyword.trim()) {
-                    keywordCounter[keyword.trim()] = (keywordCounter[keyword.trim()] || 0) + 1;
+                  const cleanKeyword = keyword.trim();
+                  if (cleanKeyword && isMeaningfulToken(cleanKeyword) && isTechTerm(cleanKeyword)) {
+                    keywordCounter[cleanKeyword] = (keywordCounter[cleanKeyword] || 0) + 1;
                   }
                 });
+              } else if (typeof article.keywords === 'string' && article.keywords) {
+                try {
+                  const keywords = article.keywords.startsWith('[') 
+                    ? JSON.parse(article.keywords) 
+                    : article.keywords.split(',');
+                  
+                  keywords.forEach((keyword: string) => {
+                    const cleanKeyword = keyword.trim().replace(/['"]/g, '');
+                    if (cleanKeyword && isMeaningfulToken(cleanKeyword) && isTechTerm(cleanKeyword)) {
+                      keywordCounter[cleanKeyword] = (keywordCounter[cleanKeyword] || 0) + 1;
+                    }
+                  });
+                } catch (e) {
+                  console.debug('키워드 파싱 오류:', e);
+                }
               }
             });
             
@@ -597,6 +669,8 @@ export default function App() {
             setDateFrom('');
             setDateTo('');
             setFavoritesOnly(false);
+            setSelectedMajorCategory(null);
+            setSelectedMinorCategory(null);
             
             return; // 백엔드 수집 성공시 여기서 종료
           }
@@ -633,6 +707,8 @@ export default function App() {
         setDateFrom('');
         setDateTo('');
         setFavoritesOnly(false);
+        setSelectedMajorCategory(null);
+        setSelectedMinorCategory(null);
       } else {
         alert('⚠️ 뉴스 수집에 실패했습니다. 네트워크 연결을 확인해주세요.');
       }
@@ -798,8 +874,8 @@ export default function App() {
     onRefresh: collectNews,
     onToggleTheme: toggleTheme,
     onSearch: () => searchInputRef.current?.focus(),
-    onNextTab: () => setTabValue(prev => (prev + 1) % 5),
-    onPrevTab: () => setTabValue(prev => (prev - 1 + 5) % 5),
+    onNextTab: () => setTabValue(prev => (prev + 1) % 6),
+    onPrevTab: () => setTabValue(prev => (prev - 1 + 6) % 6),
   });
 
   // 페이지네이션 계산
@@ -911,53 +987,78 @@ export default function App() {
           
           <Typography variant="h6" gutterBottom>🔧 필터링</Typography>
 
-          {/* 카테고리 필터 */}
+          {/* 대분류/소분류 필터 */}
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
-              카테고리 필터
+              대분류 필터
             </Typography>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-              {Object.keys(categories).map((mainCategory) => (
-                <Chip
-                  key={mainCategory}
-                  label={mainCategory}
-                  onClick={() => {
-                    if (selectedMainCategory === mainCategory) {
-                      setSelectedMainCategory(null);
-                      setSelectedSubCategory(null);
-                      setSearchTerm('');
-                    } else {
-                      setSelectedMainCategory(mainCategory);
-                      setSelectedSubCategory(null);
-                      setSearchTerm('');
-                    }
-                  }}
-                  color={selectedMainCategory === mainCategory ? 'primary' : 'default'}
-                  size="small"
-                />
-              ))}
-            </Box>
-            {selectedMainCategory && (
+            
+            {/* 대분류 선택 */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>대분류</InputLabel>
+              <Select
+                value={selectedMajorCategory || ''}
+                onChange={(e) => {
+                  const value = e.target.value as MajorCategory;
+                  setSelectedMajorCategory(value || null);
+                  setSelectedMinorCategory(null); // 대분류 변경시 소분류 초기화
+                }}
+                label="대분류"
+              >
+                <MenuItem value="">전체</MenuItem>
+                {getMajorCategories().map((majorCat) => (
+                  <MenuItem key={majorCat} value={majorCat}>
+                    {majorCat}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* 소분류 선택 */}
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>소분류</InputLabel>
+              <Select
+                value={selectedMinorCategory || ''}
+                onChange={(e) => {
+                  setSelectedMinorCategory(e.target.value || null);
+                }}
+                label="소분류"
+              >
+                <MenuItem value="">전체</MenuItem>
+                {/* 대분류가 선택된 경우 해당 소분류만, 아니면 모든 소분류 */}
+                {(selectedMajorCategory 
+                  ? getMinorCategories(selectedMajorCategory)
+                  : Object.keys(getAllMinorCategories())
+                ).map((minorCat) => (
+                  <MenuItem key={minorCat} value={minorCat}>
+                    {minorCat}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {/* 선택된 카테고리 표시 */}
+            {(selectedMajorCategory || selectedMinorCategory) && (
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                {Object.keys(categories[selectedMainCategory]).map((subCategory) => (
+                {selectedMajorCategory && (
                   <Chip
-                    key={subCategory}
-                    label={subCategory}
-                    onClick={() => {
-                      if (selectedSubCategory === subCategory) {
-                        setSelectedSubCategory(null);
-                        setSearchTerm('');
-                      } else {
-                        setSelectedSubCategory(subCategory);
-                        const keywords = (categories[selectedMainCategory] as any)[subCategory];
-                        setSearchTerm(keywords.join(' OR '));
-                      }
+                    label={`대분류: ${selectedMajorCategory}`}
+                    onDelete={() => {
+                      setSelectedMajorCategory(null);
+                      setSelectedMinorCategory(null);
                     }}
-                    color={selectedSubCategory === subCategory ? 'secondary' : 'default'}
-                    variant="outlined"
+                    color="primary"
                     size="small"
                   />
-                ))}
+                )}
+                {selectedMinorCategory && (
+                  <Chip
+                    label={`소분류: ${selectedMinorCategory}`}
+                    onDelete={() => setSelectedMinorCategory(null)}
+                    color="secondary"
+                    size="small"
+                  />
+                )}
               </Box>
             )}
           </Box>
@@ -1127,6 +1228,7 @@ export default function App() {
             }}
           >
             <Tab icon={<ArticleIcon />} label={isDesktop ? "📰 뉴스 목록" : "뉴스"} />
+            <Tab icon={<TrendingUp />} label={isDesktop ? "📈 인사이트" : "인사이트"} />
             <Tab icon={<Analytics />} label={isDesktop ? "📊 키워드 분석" : "분석"} />
             <Tab icon={<Cloud />} label={isDesktop ? "☁️ 워드클라우드" : "워드클라우드"} />
             <Tab icon={<Favorite />} label={isDesktop ? "⭐ 즐겨찾기" : "즐겨찾기"} />
@@ -1180,8 +1282,14 @@ export default function App() {
           )}
         </TabPanel>
 
-        {/* 키워드 분석 탭 */}
+        {/* 인사이트 탭 */}
         <TabPanel value={tabValue} index={1}>
+          <Typography variant="h5" gutterBottom>📈 인사이트</Typography>
+          <InsightsCharts />
+        </TabPanel>
+
+        {/* 키워드 분석 탭 */}
+        <TabPanel value={tabValue} index={2}>
           <Typography variant="h5" gutterBottom>📊 키워드 네트워크 분석</Typography>
           
           {keywordStats.length === 0 ? (
@@ -1215,7 +1323,7 @@ export default function App() {
         </TabPanel>
 
         {/* 워드클라우드 탭 */}
-        <TabPanel value={tabValue} index={2}>
+        <TabPanel value={tabValue} index={3}>
           <Typography variant="h5" gutterBottom>☁️ 워드클라우드</Typography>
           
           {keywordStats.length === 0 ? (
@@ -1228,7 +1336,7 @@ export default function App() {
         </TabPanel>
 
         {/* 즐겨찾기 탭 */}
-        <TabPanel value={tabValue} index={3}>
+        <TabPanel value={tabValue} index={4}>
           <Typography variant="h5" gutterBottom>⭐ 즐겨찾기</Typography>
           
           {(() => {
@@ -1255,7 +1363,7 @@ export default function App() {
         </TabPanel>
 
         {/* 테마/컬러 팔레트 탭 */}
-        <TabPanel value={tabValue} index={4}>
+        <TabPanel value={tabValue} index={5}>
           <Typography variant="h5" gutterBottom>🎨 테마 & 컬러 팔레트</Typography>
           <ColorPalette />
         </TabPanel>
