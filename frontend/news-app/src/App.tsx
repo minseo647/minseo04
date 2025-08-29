@@ -399,6 +399,7 @@ export default function App() {
 
   // 필터 적용
   useEffect(() => {
+    console.log('🔍 Filter useEffect triggered - articles:', articles.length, 'searchTerm:', searchTerm, 'selectedSource:', selectedSource);
     let filtered = [...articles];
 
     if (searchTerm) {
@@ -439,6 +440,9 @@ export default function App() {
       new Date(b.published).getTime() - new Date(a.published).getTime()
     );
 
+    console.log('🔍 After filtering - filtered articles:', filtered.length);
+    console.log('🔍 Filter conditions - searchTerm:', searchTerm, 'selectedSource:', selectedSource, 'dateFrom:', dateFrom, 'dateTo:', dateTo, 'favoritesOnly:', favoritesOnly);
+    
     setFilteredArticles(filtered);
     setCurrentPage(1);
   }, [articles, searchTerm, selectedSource, dateFrom, dateTo, favoritesOnly]);
@@ -469,6 +473,18 @@ export default function App() {
         // Update local articles state
         setArticles(collectedArticles);
         console.log(`✅ Updated articles: ${collectedArticles.length}`);
+        
+        // Debug: Log first few articles
+        console.log('🔍 First 3 collected articles:', collectedArticles.slice(0, 3));
+        console.log('🔍 Current state after update - articles:', articles.length, 'filteredArticles:', filteredArticles.length);
+        
+        // Clear filters to ensure articles show up
+        setSearchTerm('');
+        setSelectedSource('all');
+        setDateFrom('');
+        setDateTo('');
+        setFavoritesOnly(false);
+        console.log('🔄 Cleared all filters to show collected articles');
         
         // Update keyword stats from collected articles
         try {
