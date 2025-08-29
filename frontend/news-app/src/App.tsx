@@ -461,7 +461,19 @@ export default function App() {
       
       console.log('✅ Collection completed:', collectedArticles);
       
-      if (collectedArticles && collectedArticles.length > 0) {
+      // Validate collected articles structure
+      const validArticles = collectedArticles?.filter(article => 
+        article && 
+        article.id && 
+        article.title && 
+        typeof article.title === 'string' &&
+        article.title.length > 0
+      ) || [];
+      
+      console.log(`🔍 Validation: ${collectedArticles?.length || 0} collected, ${validArticles.length} valid`);
+
+      if (validArticles && validArticles.length > 0) {
+        collectedArticles = validArticles; // Use validated articles
         // Show success message with details
         const total = collectedArticles.length;
         const message = `✅ 뉴스 수집 완료 (${Math.round(duration)}초)\n` +
@@ -472,11 +484,24 @@ export default function App() {
         
         // Update local articles state
         setArticles(collectedArticles);
+        // Immediately update filtered articles to bypass useEffect delay
+        setFilteredArticles(collectedArticles);
         console.log(`✅ Updated articles: ${collectedArticles.length}`);
         
         // Debug: Log first few articles
         console.log('🔍 First 3 collected articles:', collectedArticles.slice(0, 3));
-        console.log('🔍 Current state after update - articles:', articles.length, 'filteredArticles:', filteredArticles.length);
+        console.log('🔍 collectedArticles data structure check:', {
+          firstArticle: collectedArticles[0],
+          hasId: collectedArticles[0]?.id,
+          hasTitle: collectedArticles[0]?.title,
+          hasLink: collectedArticles[0]?.link,
+          hasSource: collectedArticles[0]?.source
+        });
+        
+        // Force re-render by using setTimeout to ensure state update
+        setTimeout(() => {
+          console.log('🔍 State after timeout - articles:', articles.length, 'filteredArticles:', filteredArticles.length);
+        }, 100);
         
         // Clear filters to ensure articles show up
         setSearchTerm('');
