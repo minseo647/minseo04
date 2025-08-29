@@ -359,33 +359,85 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, [drawerOpen]);
 
-  // 초기 데이터 로드 - newsService 사용
+  // 초기 데이터 로드 - 백엔드 API 우선 사용
   useEffect(() => {
     const loadInitialData = async () => {
       setLoading(true);
       try {
-        // Check if cached data exists
+        console.log('🔄 백엔드에서 데이터 로딩 중...');
+        
+        // 백엔드 API에서 JSON 데이터 로드
+        try {
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/articles?limit=1000&use_json=true`);
+          if (response.ok) {
+            const backendArticles = await response.json();
+            console.log(`✅ 백엔드에서 ${backendArticles.length}개 기사 로드 성공`);
+            
+            // 백엔드 데이터를 프론트엔드 형식으로 변환
+            const formattedArticles = backendArticles.map((article: any, index: number) => ({
+              id: article.id || index + 1,
+              title: article.title || '제목 없음',
+              link: article.link || '#',
+              published: article.published || new Date().toISOString(),
+              source: article.source || '알 수 없음',
+              summary: article.summary || '',
+              keywords: Array.isArray(article.keywords) ? article.keywords : 
+                        typeof article.keywords === 'string' ? 
+                        (article.keywords.startsWith('[') ? JSON.parse(article.keywords) : article.keywords.split(',').map(k => k.trim())) : 
+                        [],
+              is_favorite: article.is_favorite || false
+            }));
+            
+            setArticles(formattedArticles);
+            
+            // 키워드 통계 생성
+            const keywordCounter: Record<string, number> = {};
+            formattedArticles.forEach((article: any) => {
+              if (article.keywords && Array.isArray(article.keywords)) {
+                article.keywords.forEach((keyword: string) => {
+                  if (keyword && keyword.trim()) {
+                    keywordCounter[keyword.trim()] = (keywordCounter[keyword.trim()] || 0) + 1;
+                  }
+                });
+              }
+            });
+            
+            const keywordStats = Object.entries(keywordCounter)
+              .sort(([,a], [,b]) => b - a)
+              .slice(0, 50)
+              .map(([keyword, count]) => ({ keyword, count }));
+            
+            setKeywordStats(keywordStats);
+            console.log(`✅ 키워드 통계 생성: ${keywordStats.length}개`);
+            
+            setCollections([]);
+            return; // 백엔드 데이터 로드 성공시 여기서 종료
+          }
+        } catch (backendError) {
+          console.warn('⚠️ 백엔드 API 연결 실패, 프론트엔드 캐시 확인 중...', backendError);
+        }
+        
+        // 백엔드 실패시 프론트엔드 캐시 확인
         if (newsService.isCacheValid()) {
-          console.log('📂 Loading from cache...');
+          console.log('📂 프론트엔드 캐시에서 로딩...');
           const cachedArticles = newsService.getFilteredArticles({});
           setArticles(cachedArticles);
           const keywordStats = newsService.getKeywordStats();
           setKeywordStats(keywordStats);
         } else {
-          console.log('🔄 Cache expired, collecting fresh news...');
-          // Collect fresh news if no cache
-          const freshArticles = await newsService.collectNews(8); // Lighter load for initial
+          console.log('🔄 캐시도 없음, 경량 뉴스 수집...');
+          // 백엔드도 실패하고 캐시도 없으면 경량 수집
+          const freshArticles = await newsService.collectNews(5); // 매우 적은 수량만
           setArticles(freshArticles);
           const keywordStats = newsService.getKeywordStats();
           setKeywordStats(keywordStats);
         }
         
-        // Skip collections for now (backend not available)
         setCollections([]);
-        console.log('📁 Collections disabled (backend not available)');
+        
       } catch (error) {
-        console.error('Failed to load initial data:', error);
-        // Fallback to empty state
+        console.error('❌ 데이터 로딩 실패:', error);
+        // 완전 실패시 빈 상태
         setArticles([]);
         setKeywordStats([]);
         setCollections([]);
@@ -447,100 +499,129 @@ export default function App() {
     setCurrentPage(1);
   }, [articles, searchTerm, selectedSource, dateFrom, dateTo, favoritesOnly]);
 
-  // Enhanced news collection using frontend newsService
+  // Enhanced news collection using backend API
   const collectNews = async () => {
     setCollecting(true);
     
     try {
-      console.log('🚀 Starting news collection...');
+      console.log('🚀 백엔드 API를 통한 뉴스 수집 시작...');
       
-      // Use frontend newsService instead of backend API - FORCE fresh collection
       const startTime = Date.now();
-      console.log('🔄 Forcing fresh news collection (ignoring cache)...');
       
-      // Clear existing cache to force fresh collection
+      // 백엔드 하이브리드 수집 API 호출
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/collect-news-now?use_hybrid=true`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          const duration = (Date.now() - startTime) / 1000;
+          
+          console.log('✅ 백엔드 수집 완료:', result);
+          
+          // 성공 메시지
+          const message = `✅ ${result.message || '하이브리드 뉴스 수집 완료'} (${Math.round(duration)}초)\n` +
+            `• JSON 파일: ${result.json_files?.inserted || 0}개\n` +
+            `• RSS 수집: ${result.rss_collection?.inserted || 0}개\n` +
+            `• 총 ${result.total_inserted || 0}개 기사 추가`;
+          
+          alert(message);
+          
+          // 백엔드에서 업데이트된 데이터 다시 로드
+          const articlesResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/articles?limit=1000&use_json=true`);
+          if (articlesResponse.ok) {
+            const updatedArticles = await articlesResponse.json();
+            
+            const formattedArticles = updatedArticles.map((article: any, index: number) => ({
+              id: article.id || index + 1,
+              title: article.title || '제목 없음',
+              link: article.link || '#',
+              published: article.published || new Date().toISOString(),
+              source: article.source || '알 수 없음',
+              summary: article.summary || '',
+              keywords: Array.isArray(article.keywords) ? article.keywords : 
+                        typeof article.keywords === 'string' ? 
+                        (article.keywords.startsWith('[') ? JSON.parse(article.keywords) : article.keywords.split(',').map(k => k.trim())) : 
+                        [],
+              is_favorite: article.is_favorite || false
+            }));
+            
+            setArticles(formattedArticles);
+            console.log(`✅ ${formattedArticles.length}개 기사로 업데이트됨`);
+            
+            // 키워드 통계 재생성
+            const keywordCounter: Record<string, number> = {};
+            formattedArticles.forEach((article: any) => {
+              if (article.keywords && Array.isArray(article.keywords)) {
+                article.keywords.forEach((keyword: string) => {
+                  if (keyword && keyword.trim()) {
+                    keywordCounter[keyword.trim()] = (keywordCounter[keyword.trim()] || 0) + 1;
+                  }
+                });
+              }
+            });
+            
+            const keywordStats = Object.entries(keywordCounter)
+              .sort(([,a], [,b]) => b - a)
+              .slice(0, 50)
+              .map(([keyword, count]) => ({ keyword, count }));
+            
+            setKeywordStats(keywordStats);
+            
+            // 필터 초기화
+            setSearchTerm('');
+            setSelectedSource('all');
+            setDateFrom('');
+            setDateTo('');
+            setFavoritesOnly(false);
+            
+            return; // 백엔드 수집 성공시 여기서 종료
+          }
+        }
+      } catch (backendError) {
+        console.warn('⚠️ 백엔드 수집 실패, 프론트엔드 수집으로 폴백:', backendError);
+      }
+      
+      // 백엔드 실패시 프론트엔드 경량 수집
+      console.log('🔄 프론트엔드 경량 수집으로 폴백...');
       localStorage.removeItem('news_articles');
       localStorage.removeItem('news_last_update');
       
-      const collectedArticles = await newsService.collectNews(25); // Collect from 25 feeds (all sources)
+      const collectedArticles = await newsService.collectNews(5); // 매우 제한적으로
       const duration = (Date.now() - startTime) / 1000;
       
-      console.log('✅ Collection completed:', collectedArticles);
-      
-      // Validate collected articles structure
       const validArticles = collectedArticles?.filter(article => 
-        article && 
-        article.id && 
-        article.title && 
-        typeof article.title === 'string' &&
-        article.title.length > 0
+        article && article.id && article.title && article.title.length > 0
       ) || [];
-      
-      console.log(`🔍 Validation: ${collectedArticles?.length || 0} collected, ${validArticles.length} valid`);
 
       if (validArticles && validArticles.length > 0) {
-        const finalArticles = validArticles; // Use validated articles
-        // Show success message with details
-        const total = finalArticles.length;
-        const message = `✅ 신규 뉴스 수집 완료 (${Math.round(duration)}초)\n` +
-          `• 새로 수집된 기사: ${total}개\n` + 
-          `• RSS 피드에서 최신 기사를 가져왔습니다.\n` +
-          `• 캐시가 초기화되어 모든 데이터가 새롭습니다.`;
+        const message = `✅ 경량 뉴스 수집 완료 (${Math.round(duration)}초)\n` +
+          `• 수집된 기사: ${validArticles.length}개\n` + 
+          `• 백엔드 연결 실패로 제한적 수집`;
         
         alert(message);
+        setArticles(validArticles);
         
-        // Update local articles state
-        setArticles(finalArticles);
-        // Immediately update filtered articles to bypass useEffect delay
-        setFilteredArticles(finalArticles);
-        console.log(`✅ Updated articles: ${finalArticles.length}`);
+        const stats = newsService.getKeywordStats();
+        setKeywordStats(stats);
         
-        // Debug: Log first few articles
-        console.log('🔍 First 3 collected articles:', finalArticles.slice(0, 3));
-        console.log('🔍 finalArticles data structure check:', {
-          firstArticle: finalArticles[0],
-          hasId: finalArticles[0]?.id,
-          hasTitle: finalArticles[0]?.title,
-          hasLink: finalArticles[0]?.link,
-          hasSource: finalArticles[0]?.source
-        });
-        
-        // Force re-render by using setTimeout to ensure state update
-        setTimeout(() => {
-          console.log('🔍 State after timeout - articles:', articles.length, 'filteredArticles:', filteredArticles.length);
-        }, 100);
-        
-        // Clear filters to ensure articles show up
         setSearchTerm('');
         setSelectedSource('all');
         setDateFrom('');
         setDateTo('');
         setFavoritesOnly(false);
-        console.log('🔄 Cleared all filters to show collected articles');
-        
-        // Update keyword stats from collected articles
-        try {
-          const stats = newsService.getKeywordStats();
-          setKeywordStats(stats);
-          console.log(`✅ Updated keyword stats: ${stats.length} keywords`);
-        } catch (keywordsError) {
-          console.error('Failed to update keywords:', keywordsError);
-        }
-        
-        // Skip collections update (backend not available)
-        console.log('📁 Collections update skipped (backend not available)');
-        
       } else {
-        console.warn('No articles collected');
-        alert('⚠️ 뉴스를 수집했지만 새로운 기사가 없습니다.');
+        alert('⚠️ 뉴스 수집에 실패했습니다. 네트워크 연결을 확인해주세요.');
       }
       
     } catch (error) {
-      console.error('Failed to collect news:', error);
+      console.error('❌ 뉴스 수집 실패:', error);
       
-      // More specific error messages
       let errorMessage = '뉴스 수집 중 오류가 발생했습니다.';
-      
       if (error instanceof Error) {
         if (error.message.includes('fetch')) {
           errorMessage += '\n네트워크 연결을 확인해주세요.';
@@ -550,13 +631,12 @@ export default function App() {
           errorMessage += `\n오류 내용: ${error.message}`;
         }
       }
-      
       errorMessage += '\n\n다시 시도해주세요.';
       alert(`❌ ${errorMessage}`);
       
     } finally {
       setCollecting(false);
-      console.log('📝 Collection process finished');
+      console.log('📝 수집 프로세스 완료');
     }
   };
 
