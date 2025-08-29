@@ -63,6 +63,7 @@ import { ColorPalette } from './components/ColorPalette';
 import { useThemeProvider } from './hooks/useTheme';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { calculateReadingTime, formatReadingTime } from './utils/readingTime';
+import { categories } from './config';
 
 
 interface TabPanelProps {
@@ -330,6 +331,8 @@ export default function App() {
   });
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(null);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(null);
   
   // 페이지네이션
   const [currentPage, setCurrentPage] = useState(1);
@@ -381,7 +384,7 @@ export default function App() {
               published: article.published || new Date().toISOString(),
               source: article.source || '알 수 없음',
               summary: article.summary || '',
-              keywords: Array.isArray(article.keywords) ? article.keywords : 
+              keywords: Array.isArray(article.keywords) ? article.keywords :
                         typeof article.keywords === 'string' ? 
                         (article.keywords.startsWith('[') ? JSON.parse(article.keywords) : article.keywords.split(',').map(k => k.trim())) : 
                         [],
@@ -456,15 +459,30 @@ export default function App() {
 
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(article => 
-        article.title?.toLowerCase().includes(searchLower) ||
-        article.summary?.toLowerCase().includes(searchLower) ||
-        (typeof article.keywords === 'string' 
-          ? article.keywords.toLowerCase().includes(searchLower)
-          : Array.isArray(article.keywords) 
-            ? article.keywords.some(k => k.toLowerCase().includes(searchLower))
-            : false)
-      );
+      const searchKeywords = searchLower.split(' or ').map(k => k.trim()).filter(k => k);
+
+      if (searchKeywords.length > 1) {
+        // Handle OR condition for category keywords
+        filtered = filtered.filter(article => {
+          return searchKeywords.some(keyword => 
+            article.title?.toLowerCase().includes(keyword) ||
+            article.summary?.toLowerCase().includes(keyword) ||
+            (Array.isArray(article.keywords) && article.keywords.some(k => k.toLowerCase().includes(keyword))) ||
+            (typeof article.keywords === 'string' && article.keywords.toLowerCase().includes(keyword))
+          );
+        });
+      } else {
+        // Handle single search term
+        filtered = filtered.filter(article => 
+          article.title?.toLowerCase().includes(searchLower) ||
+          article.summary?.toLowerCase().includes(searchLower) ||
+          (typeof article.keywords === 'string' 
+            ? article.keywords.toLowerCase().includes(searchLower)
+            : Array.isArray(article.keywords) 
+              ? article.keywords.some(k => k.toLowerCase().includes(searchLower))
+              : false)
+        );
+      }
     }
 
     if (selectedSource && selectedSource !== 'all') {
@@ -544,7 +562,7 @@ export default function App() {
               published: article.published || new Date().toISOString(),
               source: article.source || '알 수 없음',
               summary: article.summary || '',
-              keywords: Array.isArray(article.keywords) ? article.keywords : 
+              keywords: Array.isArray(article.keywords) ? article.keywords :
                         typeof article.keywords === 'string' ? 
                         (article.keywords.startsWith('[') ? JSON.parse(article.keywords) : article.keywords.split(',').map(k => k.trim())) : 
                         [],
@@ -720,7 +738,7 @@ export default function App() {
         
         const message = `✅ 요약 자동 생성 완료!\n` +
           `• 처리된 기사: ${result.total}개\n` +
-          `• 새로 생성된 요약: ${result.enhanced}개\n` +
+          `• 새로 생성된 요약: ${result.enhanced}개\n` + 
           `• 실패: ${result.failed}개`;
         
         alert(message);
@@ -737,7 +755,7 @@ export default function App() {
             published: article.published || new Date().toISOString(),
             source: article.source || '알 수 없음',
             summary: article.summary || '',
-            keywords: Array.isArray(article.keywords) ? article.keywords : 
+            keywords: Array.isArray(article.keywords) ? article.keywords :
                       typeof article.keywords === 'string' ? 
                       (article.keywords.startsWith('[') ? JSON.parse(article.keywords) : article.keywords.split(',').map(k => k.trim())) : 
                       [],
@@ -892,6 +910,59 @@ export default function App() {
           {showShortcutsHelp && <KeyboardShortcutsHelp />}
           
           <Typography variant="h6" gutterBottom>🔧 필터링</Typography>
+
+          {/* 카테고리 필터 */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+              카테고리 필터
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+              {Object.keys(categories).map((mainCategory) => (
+                <Chip
+                  key={mainCategory}
+                  label={mainCategory}
+                  onClick={() => {
+                    if (selectedMainCategory === mainCategory) {
+                      setSelectedMainCategory(null);
+                      setSelectedSubCategory(null);
+                      setSearchTerm('');
+                    } else {
+                      setSelectedMainCategory(mainCategory);
+                      setSelectedSubCategory(null);
+                      setSearchTerm('');
+                    }
+                  }}
+                  color={selectedMainCategory === mainCategory ? 'primary' : 'default'}
+                  size="small"
+                />
+              ))}
+            </Box>
+            {selectedMainCategory && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                {Object.keys(categories[selectedMainCategory]).map((subCategory) => (
+                  <Chip
+                    key={subCategory}
+                    label={subCategory}
+                    onClick={() => {
+                      if (selectedSubCategory === subCategory) {
+                        setSelectedSubCategory(null);
+                        setSearchTerm('');
+                      } else {
+                        setSelectedSubCategory(subCategory);
+                        const keywords = (categories[selectedMainCategory] as any)[subCategory];
+                        setSearchTerm(keywords.join(' OR '));
+                      }
+                    }}
+                    color={selectedSubCategory === subCategory ? 'secondary' : 'default'}
+                    variant="outlined"
+                    size="small"
+                  />
+                ))}
+              </Box>
+            )}
+          </Box>
+          
+          <Divider sx={{ my: 2 }} />
           
           {/* 뉴스 소스 */}
           <FormControl fullWidth sx={{ mb: 2 }}>
@@ -917,7 +988,7 @@ export default function App() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             sx={{ mb: 2 }}
-            InputProps={{
+            InputProps={{ 
               startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} />
             }}
           />
