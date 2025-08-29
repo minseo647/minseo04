@@ -96,7 +96,8 @@ function KeywordNetworkContainer() {
   useEffect(() => {
     const loadNetworkData = async () => {
       try {
-        const data = await newsApi.getKeywordNetwork();
+        // Use newsService for keyword network data
+        const data = newsService.getKeywordNetwork();
         setNetworkData(data);
       } catch (error) {
         console.error('Failed to load network data:', error);
@@ -358,19 +359,41 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, [drawerOpen]);
 
-  // 초기 데이터 로드
+  // 초기 데이터 로드 - newsService 사용
   useEffect(() => {
     const loadInitialData = async () => {
       setLoading(true);
       try {
-        const articlesData = await newsApi.getArticles({ limit: 100 });
-        setArticles(articlesData);
-        const keywordStatsData = await newsApi.getKeywordStats();
-        setKeywordStats(keywordStatsData);
-        const collectionsData = await newsApi.getCollections();
-        setCollections(collectionsData);
+        // Check if cached data exists
+        if (newsService.isCacheValid()) {
+          console.log('📂 Loading from cache...');
+          const cachedArticles = newsService.getFilteredArticles({});
+          setArticles(cachedArticles);
+          const keywordStats = newsService.getKeywordStats();
+          setKeywordStats(keywordStats);
+        } else {
+          console.log('🔄 Cache expired, collecting fresh news...');
+          // Collect fresh news if no cache
+          const freshArticles = await newsService.collectNews(8); // Lighter load for initial
+          setArticles(freshArticles);
+          const keywordStats = newsService.getKeywordStats();
+          setKeywordStats(keywordStats);
+        }
+        
+        // Collections can still try backend API (optional feature)
+        try {
+          const collectionsData = await newsApi.getCollections();
+          setCollections(collectionsData);
+        } catch (collectionsError) {
+          console.warn('Collections not available (backend issue):', collectionsError);
+          setCollections([]);
+        }
       } catch (error) {
         console.error('Failed to load initial data:', error);
+        // Fallback to empty state
+        setArticles([]);
+        setKeywordStats([]);
+        setCollections([]);
       } finally {
         setLoading(false);
       }
@@ -501,22 +524,30 @@ export default function App() {
     }
   };
 
-  // 즐겨찾기 토글
+  // 즐겨찾기 토글 - newsService 사용
   const handleToggleFavorite = async (articleId: number) => {
     try {
       const article = articles.find(a => a.id === articleId);
       if (!article) return;
 
-      if (article.is_favorite) {
-        await newsApi.removeFavorite(articleId);
-      } else {
-        await newsApi.addFavorite(articleId);
-      }
+      // Use newsService for local favorite management
+      newsService.toggleFavorite(articleId);
 
       // 로컬 상태 업데이트
       setArticles(prev => prev.map(a => 
         a.id === articleId ? { ...a, is_favorite: !a.is_favorite } : a
       ));
+
+      // Try to sync with backend (optional, non-blocking)
+      try {
+        if (article.is_favorite) {
+          await newsApi.addFavorite(articleId);
+        } else {
+          await newsApi.removeFavorite(articleId);
+        }
+      } catch (backendError) {
+        console.warn('Backend sync failed for favorite:', backendError);
+      }
     } catch (error) {
       console.error('Failed to toggle favorite:', error);
     }
