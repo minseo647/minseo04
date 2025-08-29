@@ -11,6 +11,9 @@ import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 import asyncio
+import base64
+import io
+from collections import Counter
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -848,6 +851,124 @@ async def translate_article(article_id: int):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"번역 실패: {str(e)}")
+
+# ====== 워드클라우드 생성 API ======
+
+@app.get("/api/wordcloud")
+async def generate_wordcloud(
+    limit: int = Query(100, description="키워드 제한 수"),
+    width: int = Query(800, description="이미지 너비"),
+    height: int = Query(400, description="이미지 높이")
+):
+    """파이썬 wordcloud 라이브러리를 사용한 워드클라우드 생성"""
+    try:
+        # WordCloud 라이브러리 임포트 (필요시 설치)
+        try:
+            from wordcloud import WordCloud
+            import matplotlib.pyplot as plt
+            from matplotlib import font_manager
+        except ImportError:
+            raise HTTPException(
+                status_code=500, 
+                detail="WordCloud 라이브러리가 설치되지 않았습니다. pip install wordcloud pillow matplotlib 실행 필요"
+            )
+        
+        # 데이터베이스에서 키워드 수집
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 최근 기사들의 키워드 수집
+        cursor.execute("""
+            SELECT keywords FROM articles 
+            WHERE keywords IS NOT NULL 
+            AND created_at >= NOW() - INTERVAL '30 days'
+            ORDER BY created_at DESC 
+            LIMIT %s
+        """, (limit * 2,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        # 키워드 추출 및 빈도 계산
+        keyword_freq = Counter()
+        
+        for (keywords_str,) in results:
+            if keywords_str:
+                if isinstance(keywords_str, str):
+                    try:
+                        # JSON 형태의 키워드 파싱
+                        keywords = json.loads(keywords_str) if keywords_str.startswith('[') else keywords_str.split(',')
+                    except:
+                        keywords = keywords_str.split(',')
+                else:
+                    keywords = keywords_str
+                
+                for keyword in keywords:
+                    keyword = str(keyword).strip()
+                    if keyword and len(keyword) > 1:
+                        keyword_freq[keyword] += 1
+        
+        if not keyword_freq:
+            # 기본 키워드 제공
+            keyword_freq = Counter({
+                'AI': 50, '인공지능': 45, '딥러닝': 35, '머신러닝': 30,
+                '블록체인': 25, '클라우드': 20, '보안': 18, '스타트업': 15,
+                '투자': 12, '기술': 40, 'IT': 35, '개발': 22, '데이터': 28
+            })
+        
+        # 상위 키워드만 선택
+        top_keywords = dict(keyword_freq.most_common(limit))
+        
+        # 한글 폰트 설정 (시스템에서 사용 가능한 폰트 찾기)
+        font_path = None
+        korean_fonts = [
+            '/System/Library/Fonts/AppleSDGothicNeo.ttc',  # macOS
+            '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',  # Ubuntu
+            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # 기본 폰트
+            'C:\\Windows\\Fonts\\malgun.ttf',  # Windows
+            'NanumGothic',  # 시스템 폰트명
+        ]
+        
+        for font in korean_fonts:
+            if os.path.exists(font):
+                font_path = font
+                break
+        
+        # WordCloud 생성
+        wordcloud = WordCloud(
+            font_path=font_path,
+            width=width,
+            height=height,
+            background_color='white',
+            max_words=limit,
+            relative_scaling=0.5,
+            colormap='viridis',
+            min_font_size=12,
+            max_font_size=80,
+            prefer_horizontal=0.7
+        ).generate_from_frequencies(top_keywords)
+        
+        # 이미지를 바이트로 변환
+        img_buffer = io.BytesIO()
+        plt.figure(figsize=(width/100, height/100))
+        plt.imshow(wordcloud, interpolation='bilinear')
+        plt.axis('off')
+        plt.tight_layout(pad=0)
+        plt.savefig(img_buffer, format='PNG', bbox_inches='tight', dpi=100)
+        plt.close()
+        
+        img_buffer.seek(0)
+        img_base64 = base64.b64encode(img_buffer.read()).decode('utf-8')
+        
+        return {
+            "wordcloud_image": f"data:image/png;base64,{img_base64}",
+            "keyword_count": len(top_keywords),
+            "top_keywords": list(top_keywords.keys())[:20]
+        }
+        
+    except Exception as e:
+        logger.error(f"워드클라우드 생성 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"워드클라우드 생성 실패: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

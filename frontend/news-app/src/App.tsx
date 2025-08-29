@@ -973,9 +973,7 @@ export default function App() {
               <Grid item xs={12} md={6}>
                 <Typography variant="h6" gutterBottom>📈 키워드 분포</Typography>
                 <Paper sx={{ p: 2, height: 400 }}>
-                  {keywordStats.length > 0 && (
-                    <KeywordCloud keywords={keywordStats.slice(0, 50)} />
-                  )}
+                  <KeywordCloud onError={(error) => console.error('워드클라우드 오류:', error)} />
                 </Paper>
               </Grid>
 
@@ -997,7 +995,7 @@ export default function App() {
             <Alert severity="info">워드클라우드를 생성할 데이터가 없습니다.</Alert>
           ) : (
             <Paper sx={{ p: 2, height: 600 }}>
-              <KeywordCloud keywords={keywordStats} />
+              <KeywordCloud onError={(error) => console.error('워드클라우드 오류:', error)} />
             </Paper>
           )}
         </TabPanel>

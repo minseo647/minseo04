@@ -174,4 +174,14 @@ export const newsApi = {
     const response = await api.post(`/api/translate/${articleId}`);
     return response.data;
   },
+
+  // 파이썬 기반 워드클라우드 생성
+  getWordcloud: async (params?: {
+    limit?: number;
+    width?: number;
+    height?: number;
+  }) => {
+    const response = await api.get('/api/wordcloud', { params });
+    return response.data;
+  },
 };
