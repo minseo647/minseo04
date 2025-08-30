@@ -1544,6 +1544,7 @@ if frontend_dist.exists():
     app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
     
     @app.get("/")
+    @app.head("/")
     async def serve_frontend():
         index_path = frontend_dist / "index.html"
         if index_path.exists():
@@ -1552,6 +1553,7 @@ if frontend_dist.exists():
             return {"message": "Frontend not built. Please run 'npm run build' in frontend/news-app directory"}
 else:
     @app.get("/")
+    @app.head("/")
     async def root():
         return {"message": "News API Server is running. Frontend not found."}
 
