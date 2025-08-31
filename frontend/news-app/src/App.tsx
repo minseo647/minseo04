@@ -1,6 +1,3 @@
-"""npm install -g @anthropic-ai/claude-code"""
-"""라고 입력하고 엔터"""
-
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Typography,
