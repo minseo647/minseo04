@@ -349,19 +349,14 @@ export default function App() {
     const handleResize = () => {
       const desktop = window.innerWidth >= 1024;
       setIsDesktop(desktop);
-      // 데스크톱에서는 사이드바 항상 열기, 모바일에서는 기본으로 닫기
-      if (desktop && !drawerOpen) {
-        setDrawerOpen(true);
-      } else if (!desktop && drawerOpen) {
-        setDrawerOpen(false);
-      }
+      // 초기화 시에만 데스크톱 기본값 설정
     };
 
     window.addEventListener('resize', handleResize);
     handleResize(); // 초기 실행
 
     return () => window.removeEventListener('resize', handleResize);
-  }, [drawerOpen]);
+  }, []); // drawerOpen 의존성 제거
 
   // 초기 데이터 로드 - 백엔드 API 우선 사용
   useEffect(() => {
@@ -562,6 +557,9 @@ export default function App() {
           setFilteredArticles(filtered);
         }
         
+        // 필터링된 데이터 기준으로 키워드 통계 재계산
+        updateKeywordStatsFromFiltered();
+        
       } catch (error) {
         console.error('Error applying filters:', error);
         setFilteredArticles(articles); // 오류시 전체 기사 표시
@@ -572,6 +570,43 @@ export default function App() {
 
     applyFilters();
   }, [articles, searchTerm, selectedSource, dateFrom, dateTo, favoritesOnly, selectedMajorCategory, selectedMinorCategory]);
+
+  // 필터링된 데이터 기준으로 키워드 통계 업데이트
+  const updateKeywordStatsFromFiltered = () => {
+    const keywordCounter: Record<string, number> = {};
+    filteredArticles.forEach((article: any) => {
+      if (article.keywords && Array.isArray(article.keywords)) {
+        article.keywords.forEach((keyword: string) => {
+          const cleanKeyword = keyword.trim();
+          if (cleanKeyword && isMeaningfulToken(cleanKeyword) && isTechTerm(cleanKeyword)) {
+            keywordCounter[cleanKeyword] = (keywordCounter[cleanKeyword] || 0) + 1;
+          }
+        });
+      } else if (typeof article.keywords === 'string' && article.keywords) {
+        try {
+          const keywords = article.keywords.startsWith('[') 
+            ? JSON.parse(article.keywords) 
+            : article.keywords.split(',');
+          
+          keywords.forEach((keyword: string) => {
+            const cleanKeyword = keyword.trim().replace(/['"]/g, '');
+            if (cleanKeyword && isMeaningfulToken(cleanKeyword) && isTechTerm(cleanKeyword)) {
+              keywordCounter[cleanKeyword] = (keywordCounter[cleanKeyword] || 0) + 1;
+            }
+          });
+        } catch (e) {
+          console.debug('키워드 파싱 오류:', e);
+        }
+      }
+    });
+    
+    const keywordStats = Object.entries(keywordCounter)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 50)
+      .map(([keyword, count]) => ({ keyword, count }));
+    
+    setKeywordStats(keywordStats);
+  };
 
   // Enhanced news collection using backend API
   const collectNews = async () => {
@@ -625,8 +660,23 @@ export default function App() {
               is_favorite: article.is_favorite || false
             }));
             
-            setArticles(formattedArticles);
-            console.log(`✅ [데이터 수집 현황] ${formattedArticles.length}개 기사로 업데이트 완료`);
+            // 기존 데이터와 새로 수집된 데이터 통합
+            setArticles(prevArticles => {
+              const combined = [...prevArticles];
+              let newCount = 0;
+              
+              formattedArticles.forEach(newArticle => {
+                // 중복 체크 (link 기준)
+                const exists = combined.find(existing => existing.link === newArticle.link);
+                if (!exists) {
+                  combined.push(newArticle);
+                  newCount++;
+                }
+              });
+              
+              console.log(`✅ [데이터 수집 현황] 총 ${combined.length}개 기사 (${newCount}개 신규 추가)`);
+              return combined;
+            });
             
             // 키워드 통계 재생성 (필터링 적용)
             const keywordCounter: Record<string, number> = {};
@@ -885,10 +935,10 @@ export default function App() {
     currentPage * itemsPerPage
   );
 
-  // 소스 목록 (articles에서 추출)
+  // 소스 목록 (전체 articles에서 추출 - 필터링과 무관)
   const sources = [...new Set(articles.map(a => a.source))].sort();
   
-  // 통계 (클라이언트 계산)
+  // 통계 (전체 데이터 기준)
   const stats = {
     totalArticles: articles.length,
     totalSources: sources.length,
@@ -897,7 +947,8 @@ export default function App() {
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       return new Date(a.published) >= weekAgo;
-    }).length
+    }).length,
+    filteredArticles: filteredArticles.length
   };
 
   return (
@@ -1174,6 +1225,7 @@ export default function App() {
               color: theme => theme.palette.mode === 'dark' ? 'grey.300' : 'text.primary'
             }}>
               📊 총 {stats.totalArticles}건의 뉴스<br/>
+              🔍 필터링된 {stats.filteredArticles}건<br/>
               📰 {stats.totalSources}개 소스<br/>
               ⭐ {stats.totalFavorites}개 즐겨찾기<br/>
               📅 최근 7일: {stats.recentArticles}건
@@ -1285,12 +1337,18 @@ export default function App() {
         {/* 인사이트 탭 */}
         <TabPanel value={tabValue} index={1}>
           <Typography variant="h5" gutterBottom>📈 인사이트</Typography>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            전체 {articles.length}개 기사 기준 분석 (필터링과 독립적)
+          </Typography>
           <InsightsCharts />
         </TabPanel>
 
         {/* 키워드 분석 탭 */}
         <TabPanel value={tabValue} index={2}>
           <Typography variant="h5" gutterBottom>📊 키워드 네트워크 분석</Typography>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+            현재 필터링된 {filteredArticles.length}개 기사 기준 키워드 분석
+          </Typography>
           
           {keywordStats.length === 0 ? (
             <Alert severity="info">분석할 데이터가 없습니다.</Alert>
