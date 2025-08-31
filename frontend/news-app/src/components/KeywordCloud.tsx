@@ -14,11 +14,11 @@ interface KeywordCloudProps {
 
 interface WordCloudResult {
   success: boolean;
-  image_base64: string;
-  total_keywords: number;
-  used_keywords: number;
-  keyword_table: { keyword: string; frequency: number }[];
-  settings: {
+  image_base64?: string;
+  total_keywords?: number;
+  used_keywords?: number;
+  keyword_table?: { keyword: string; frequency: number }[];
+  settings?: {
     max_words: number;
     colormap: string;
     auto_korean_font: boolean;
@@ -26,6 +26,7 @@ interface WordCloudResult {
     font_path: string | null;
     filter_unrenderables: boolean;
   };
+  error?: string; // 에러 케이스를 위한 속성 추가
 }
 
 export const KeywordCloud: React.FC<KeywordCloudProps> = ({ data, onError }) => {
