@@ -62,6 +62,7 @@ export const KeywordCloud: React.FC<KeywordCloudProps> = ({ data, onError }) => 
 
   return (
     <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'white' }}>
+      <Typography variant="h6" gutterBottom>
         🐍 Python 워드클라우드 (wordcloud 라이브러리)
       </Typography>
       <Box sx={{ 

@@ -1418,7 +1418,7 @@ async def generate_wordcloud(
         if not keyword_freq:
             return {"error": "No keywords found"}
         
-        # Generate wordcloud
+        # Generate wordcloud with enhanced settings
         wordcloud = WordCloud(
             width=width,
             height=height,
@@ -1426,7 +1426,9 @@ async def generate_wordcloud(
             max_words=max_words,
             relative_scaling=0.5,
             colormap='viridis',
-            font_path=None  # Use default font
+            collocations=False,  # Prevent word combinations
+            font_path=None,  # Use default font (한글 지원 시 개선 가능)
+            stopwords=set(['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'])
         ).generate_from_frequencies(keyword_freq)
         
         # Convert to image bytes
