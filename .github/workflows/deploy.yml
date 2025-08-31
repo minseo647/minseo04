@@ -35,7 +35,7 @@ jobs:
       working-directory: ./frontend/news-app
       run: npm run build
       env:
-        VITE_API_URL: https://streamlit-04.onrender.com
+        VITE_API_URL: https://news-api-backend2.onrender.com
 
     - name: Setup Pages
       uses: actions/configure-pages@v4
