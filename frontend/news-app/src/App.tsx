@@ -91,25 +91,97 @@ interface ArticleCardProps {
 }
 
 // 키워드 네트워크 컨테이너 컴포넌트
-function KeywordNetworkContainer() {
+function KeywordNetworkContainer({ articles }: { articles: Article[] }) {
   const [networkData, setNetworkData] = useState<any>({ nodes: [], edges: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadNetworkData = async () => {
+    const generateNetworkData = () => {
       try {
-        // Use newsService for keyword network data
-        const data = newsService.getKeywordNetwork();
-        setNetworkData(data);
+        // 키워드 공통 출현 분석으로 네트워크 생성
+        const keywordCounts: Record<string, number> = {};
+        const keywordPairs: Record<string, number> = {};
+        
+        articles.forEach(article => {
+          const keywords: string[] = [];
+          
+          // 키워드 추출
+          if (Array.isArray(article.keywords)) {
+            keywords.push(...article.keywords);
+          } else if (typeof article.keywords === 'string' && article.keywords) {
+            try {
+              const parsed = article.keywords.startsWith('[') 
+                ? JSON.parse(article.keywords) 
+                : article.keywords.split(',');
+              keywords.push(...parsed.map(k => k.trim()));
+            } catch (e) {
+              keywords.push(...article.keywords.split(',').map(k => k.trim()));
+            }
+          }
+          
+          // 키워드 카운트
+          keywords.forEach(keyword => {
+            const cleanKeyword = keyword.trim().replace(/['"]/g, '');
+            if (cleanKeyword && isMeaningfulToken(cleanKeyword) && isTechTerm(cleanKeyword)) {
+              keywordCounts[cleanKeyword] = (keywordCounts[cleanKeyword] || 0) + 1;
+            }
+          });
+          
+          // 키워드 쌍 분석 (같은 기사에 등장하는 키워드들)
+          const uniqueKeywords = [...new Set(keywords.map(k => k.trim().replace(/['"]/g, '')))];
+          for (let i = 0; i < uniqueKeywords.length; i++) {
+            for (let j = i + 1; j < uniqueKeywords.length; j++) {
+              const k1 = uniqueKeywords[i];
+              const k2 = uniqueKeywords[j];
+              if (k1 && k2 && isMeaningfulToken(k1) && isMeaningfulToken(k2) && isTechTerm(k1) && isTechTerm(k2)) {
+                const pairKey = [k1, k2].sort().join('|');
+                keywordPairs[pairKey] = (keywordPairs[pairKey] || 0) + 1;
+              }
+            }
+          }
+        });
+        
+        // 상위 키워드만 선택 (노드)
+        const topKeywords = Object.entries(keywordCounts)
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, 15)
+          .map(([keyword, count]) => ({ keyword, count }));
+          
+        const keywordSet = new Set(topKeywords.map(k => k.keyword));
+        
+        // 노드 생성
+        const nodes = topKeywords.map(({ keyword, count }, index) => ({
+          id: index,
+          label: keyword,
+          value: count,
+          color: `hsl(${(index * 360) / topKeywords.length}, 70%, 50%)`
+        }));
+        
+        // 엣지 생성 (상위 키워드 간의 연결만)
+        const edges: any[] = [];
+        Object.entries(keywordPairs).forEach(([pairKey, count]) => {
+          const [k1, k2] = pairKey.split('|');
+          if (keywordSet.has(k1) && keywordSet.has(k2) && count >= 2) { // 2회 이상 공통 출현
+            const from = nodes.find(n => n.label === k1)?.id;
+            const to = nodes.find(n => n.label === k2)?.id;
+            if (from !== undefined && to !== undefined) {
+              edges.push({ from, to, value: count });
+            }
+          }
+        });
+        
+        console.log('🕸️ 키워드 네트워크 생성:', { nodes: nodes.length, edges: edges.length });
+        setNetworkData({ nodes, edges });
       } catch (error) {
-        console.error('Failed to load network data:', error);
+        console.error('Failed to generate network data:', error);
+        setNetworkData({ nodes: [], edges: [] });
       } finally {
         setLoading(false);
       }
     };
 
-    loadNetworkData();
-  }, []);
+    generateNetworkData();
+  }, [articles]);
 
   if (loading) {
     return (
@@ -1373,7 +1445,7 @@ export default function App() {
               <Grid item xs={12} md={8}>
                 <Typography variant="h6" gutterBottom>🕸️ 키워드 관계 네트워크</Typography>
                 <Paper sx={{ p: 2, height: 500 }}>
-                  <KeywordNetworkContainer />
+                  <KeywordNetworkContainer articles={filteredArticles} />
                 </Paper>
               </Grid>
             </Grid>

@@ -1371,6 +1371,83 @@ async def run_background_collection():
     except Exception as e:
         logger.error(f"❌ Background collection error: {e}")
 
+@app.get("/api/wordcloud")
+async def generate_wordcloud(
+    width: int = Query(800, description="Image width"),
+    height: int = Query(400, description="Image height"),
+    background_color: str = Query("white", description="Background color"),
+    max_words: int = Query(100, description="Maximum number of words")
+):
+    """Generate Python wordcloud image from keywords"""
+    try:
+        await ensure_db_initialized()
+        
+        # Check if wordcloud is available
+        try:
+            from wordcloud import WordCloud
+            import io
+            import base64
+            from PIL import Image
+        except ImportError:
+            return {"error": "wordcloud library not installed", "install_command": "pip install wordcloud pillow"}
+        
+        # Get keywords from database
+        cursor = db.get_cursor()
+        cursor.execute("SELECT keywords FROM articles WHERE keywords IS NOT NULL AND keywords != ''")
+        rows = cursor.fetchall()
+        
+        # Extract and count keywords
+        keyword_freq = {}
+        for row in rows:
+            keywords_str = row['keywords']
+            if keywords_str:
+                try:
+                    if keywords_str.startswith('['):
+                        keywords = json.loads(keywords_str)
+                    else:
+                        keywords = keywords_str.split(',')
+                    
+                    for keyword in keywords:
+                        clean_keyword = keyword.strip().replace('"', '').replace("'", "")
+                        if clean_keyword and len(clean_keyword) > 1:
+                            keyword_freq[clean_keyword] = keyword_freq.get(clean_keyword, 0) + 1
+                            
+                except Exception as e:
+                    continue
+        
+        if not keyword_freq:
+            return {"error": "No keywords found"}
+        
+        # Generate wordcloud
+        wordcloud = WordCloud(
+            width=width,
+            height=height,
+            background_color=background_color,
+            max_words=max_words,
+            relative_scaling=0.5,
+            colormap='viridis',
+            font_path=None  # Use default font
+        ).generate_from_frequencies(keyword_freq)
+        
+        # Convert to image bytes
+        img_buffer = io.BytesIO()
+        wordcloud.to_image().save(img_buffer, format='PNG')
+        img_buffer.seek(0)
+        
+        # Encode to base64
+        img_base64 = base64.b64encode(img_buffer.read()).decode()
+        
+        return {
+            "success": True,
+            "image_base64": img_base64,
+            "total_keywords": len(keyword_freq),
+            "dimensions": {"width": width, "height": height}
+        }
+        
+    except Exception as e:
+        logger.error(f"Wordcloud generation error: {e}")
+        return {"error": str(e)}
+
 @app.post("/api/collect-news-light")
 async def collect_news_light():
     """경량화된 뉴스 수집 (서버 안정성 우선)"""
