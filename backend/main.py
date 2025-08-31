@@ -1371,6 +1371,43 @@ async def run_background_collection():
     except Exception as e:
         logger.error(f"❌ Background collection error: {e}")
 
+@app.post("/api/collect-news-light")
+async def collect_news_light():
+    """경량화된 뉴스 수집 (서버 안정성 우선)"""
+    try:
+        await ensure_db_initialized()
+        
+        # 간단한 RSS 수집만 수행 (5개 소스, 각각 5개 기사만)
+        feeds = [
+            {"url": "https://feeds.feedburner.com/venturebeat/SZYF", "source": "VentureBeat AI"},
+            {"url": "https://rss.cnn.com/rss/cnn_tech.rss", "source": "CNN Tech"},
+            {"url": "https://www.theverge.com/rss/index.xml", "source": "The Verge"},
+            {"url": "https://techcrunch.com/feed/", "source": "TechCrunch"},
+            {"url": "https://it.donga.com/feeds/rss/", "source": "IT동아"}
+        ]
+        
+        collected = 0
+        for feed in feeds[:3]:  # 처음 3개만 수집
+            try:
+                articles = collect_from_rss(feed["url"], feed["source"], max_items=5)
+                if articles:
+                    stats = save_articles_to_db(articles)
+                    collected += stats.get('inserted', 0)
+            except Exception as e:
+                logger.warning(f"Feed collection failed: {e}")
+                continue
+        
+        return {
+            "message": f"경량 수집 완료: {collected}개 신규 기사",
+            "status": "success",
+            "collected": collected,
+            "method": "light_rss_only"
+        }
+        
+    except Exception as e:
+        logger.error(f"Light collection error: {e}")
+        return {"message": f"경량 수집 실패: {str(e)}", "status": "error"}
+
 @app.post("/api/collect-news-now")
 async def collect_news_now(
     max_feeds: Optional[int] = Query(None, description="Maximum number of feeds to process"),

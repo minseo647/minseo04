@@ -1,3 +1,6 @@
+"""npm install -g @anthropic-ai/claude-code"""
+"""라고 입력하고 엔터"""
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Typography,
@@ -582,9 +585,9 @@ export default function App() {
       
       const startTime = Date.now();
       
-      // 백엔드 하이브리드 수집 API 호출
+      // 백엔드 경량 수집 API 호출 (서버 안정성 우선)
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/collect-news-now?use_hybrid=true`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/collect-news-light`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -598,10 +601,10 @@ export default function App() {
           console.log('✅ [데이터 수집 현황] 백엔드 수집 완료:', result);
           
           // 성공 메시지
-          const message = `✅ ${result.message || '하이브리드 뉴스 수집 완료'} (${Math.round(duration)}초)\n` +
-            `• JSON 파일: ${result.json_files?.inserted || 0}개\n` +
-            `• RSS 수집: ${result.rss_collection?.inserted || 0}개\n` +
-            `• 총 ${result.total_inserted || 0}개 기사 추가`;
+          const message = `✅ ${result.message || '경량 뉴스 수집 완료'} (${Math.round(duration)}초)\n` +
+            `• 수집 방식: ${result.method || '경량 RSS'}\n` +
+            `• 신규 기사: ${result.collected || 0}개\n` +
+            `• 서버 부하 최소화로 안정성 우선 수집`;
           
           alert(message);
           
