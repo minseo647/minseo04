@@ -1376,7 +1376,10 @@ async def generate_wordcloud(
     width: int = Query(800, description="Image width"),
     height: int = Query(400, description="Image height"),
     background_color: str = Query("white", description="Background color"),
-    max_words: int = Query(100, description="Maximum number of words")
+    max_words: int = Query(100, description="Maximum number of words (20-200)", ge=20, le=200),
+    colormap: str = Query("viridis", description="Color scheme (viridis, plasma, rainbow, cool, hot)"),
+    auto_korean_font: bool = Query(True, description="Auto apply Korean font"),
+    filter_unrenderables: bool = Query(True, description="Filter emoji/unsupported characters")
 ):
     """Generate Python wordcloud image from keywords"""
     try:
@@ -1396,7 +1399,7 @@ async def generate_wordcloud(
         cursor.execute("SELECT keywords FROM articles WHERE keywords IS NOT NULL AND keywords != ''")
         rows = cursor.fetchall()
         
-        # Extract and count keywords
+        # Extract and count keywords with filtering
         keyword_freq = {}
         for row in rows:
             keywords_str = row['keywords']
@@ -1409,14 +1412,38 @@ async def generate_wordcloud(
                     
                     for keyword in keywords:
                         clean_keyword = keyword.strip().replace('"', '').replace("'", "")
+                        
+                        # Apply filtering if enabled
+                        if filter_unrenderables:
+                            # Remove emoji and special characters
+                            import re
+                            clean_keyword = re.sub(r'[^\w\s가-힣]', '', clean_keyword)
+                        
                         if clean_keyword and len(clean_keyword) > 1:
-                            keyword_freq[clean_keyword] = keyword_freq.get(clean_keyword, 0) + 1
+                            # Additional tech term filtering
+                            if any(c.isalnum() or c in '가-힣' for c in clean_keyword):
+                                keyword_freq[clean_keyword] = keyword_freq.get(clean_keyword, 0) + 1
                             
                 except Exception as e:
                     continue
         
         if not keyword_freq:
             return {"error": "No keywords found"}
+        
+        # Korean font path detection (simplified)
+        font_path = None
+        if auto_korean_font:
+            # Try to find Korean fonts (you can expand this list)
+            import os
+            potential_fonts = [
+                "/System/Library/Fonts/AppleGothic.ttf",  # macOS
+                "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",  # Ubuntu
+                "C:/Windows/Fonts/malgun.ttf",  # Windows
+            ]
+            for font in potential_fonts:
+                if os.path.exists(font):
+                    font_path = font
+                    break
         
         # Generate wordcloud with enhanced settings
         wordcloud = WordCloud(
@@ -1425,9 +1452,9 @@ async def generate_wordcloud(
             background_color=background_color,
             max_words=max_words,
             relative_scaling=0.5,
-            colormap='viridis',
+            colormap=colormap,
             collocations=False,  # Prevent word combinations
-            font_path=None,  # Use default font (한글 지원 시 개선 가능)
+            font_path=font_path,  # Korean font support
             stopwords=set(['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'])
         ).generate_from_frequencies(keyword_freq)
         
@@ -1439,11 +1466,25 @@ async def generate_wordcloud(
         # Encode to base64
         img_base64 = base64.b64encode(img_buffer.read()).decode()
         
+        # Prepare keyword frequency table (top keywords used in wordcloud)
+        sorted_keywords = sorted(keyword_freq.items(), key=lambda x: x[1], reverse=True)[:max_words]
+        keyword_table = [{"keyword": k, "frequency": v} for k, v in sorted_keywords]
+        
         return {
             "success": True,
             "image_base64": img_base64,
             "total_keywords": len(keyword_freq),
-            "dimensions": {"width": width, "height": height}
+            "used_keywords": len(sorted_keywords),
+            "dimensions": {"width": width, "height": height},
+            "settings": {
+                "max_words": max_words,
+                "colormap": colormap,
+                "auto_korean_font": auto_korean_font,
+                "font_detected": font_path is not None,
+                "font_path": font_path,
+                "filter_unrenderables": filter_unrenderables
+            },
+            "keyword_table": keyword_table
         }
         
     except Exception as e:
