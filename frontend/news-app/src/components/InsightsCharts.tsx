@@ -49,7 +49,22 @@ interface InsightsData {
   };
 }
 
-export const InsightsCharts: React.FC = () => {
+interface Article {
+  id: number;
+  title: string;
+  link: string;
+  published: string;
+  source: string;
+  summary?: string;
+  keywords?: string[] | string;
+  is_favorite?: boolean;
+}
+
+interface InsightsChartsProps {
+  articles: Article[];
+}
+
+export const InsightsCharts: React.FC<InsightsChartsProps> = ({ articles }) => {
   const [data, setData] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,38 +77,70 @@ export const InsightsCharts: React.FC = () => {
     '#d084d0', '#ffb347', '#87ceeb', '#dda0dd', '#98fb98'
   ];
 
-  const fetchInsights = async () => {
+  const processInsights = () => {
     setLoading(true);
     setError(null);
     
     try {
-      const params = new URLSearchParams({
-        period: period,
-        days_back: daysBack.toString(),
-        use_json: 'true'
+      if (!articles || articles.length === 0) {
+        setError('분석할 데이터가 없습니다.');
+        setLoading(false);
+        return;
+      }
+
+      // 날짜별 기사 수 계산
+      const dateMap: Record<string, number> = {};
+      const categoryMap: Record<string, number> = {};
+      
+      articles.forEach(article => {
+        const date = new Date(article.published);
+        const dateKey = period === 'monthly' 
+          ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+          : period === 'weekly'
+          ? `${date.getFullYear()}-W${Math.ceil(date.getDate() / 7)}`
+          : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        
+        dateMap[dateKey] = (dateMap[dateKey] || 0) + 1;
+        
+        // 소스별 카운트
+        categoryMap[article.source] = (categoryMap[article.source] || 0) + 1;
       });
 
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/insights?${params}`
-      );
+      // 최근 daysBack일 동안의 데이터만 필터링
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysBack);
       
-      if (response.ok) {
-        const insightsData = await response.json();
-        setData(insightsData);
-      } else {
-        setError('인사이트 데이터를 불러오는 데 실패했습니다.');
-      }
+      const filteredDateMap = Object.entries(dateMap).filter(([dateKey]) => {
+        const [year, month, day] = dateKey.split('-').map(Number);
+        const articleDate = new Date(year, month - 1, day || 1);
+        return articleDate >= cutoffDate;
+      });
+
+      const time_series = filteredDateMap.map(([date, count]) => ({ date, count }));
+      
+      const insightsData: InsightsData = {
+        time_series,
+        category_counts: categoryMap,
+        total_articles: articles.length,
+        period,
+        date_range: {
+          start: cutoffDate.toISOString().split('T')[0],
+          end: new Date().toISOString().split('T')[0]
+        }
+      };
+      
+      setData(insightsData);
     } catch (err) {
-      setError('서버 연결 오류가 발생했습니다.');
-      console.error('Insights fetch error:', err);
+      setError('데이터 분석 중 오류가 발생했습니다.');
+      console.error('Insights processing error:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchInsights();
-  }, [period, daysBack]);
+    processInsights();
+  }, [articles, period, daysBack]);
 
   // 카테고리 데이터를 차트용으로 변환
   const categoryChartData = data ? Object.entries(data.category_counts).map(([category, count]) => ({

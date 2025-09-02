@@ -161,11 +161,16 @@ function KeywordNetworkContainer({ articles }: { articles: Article[] }) {
         const edges: any[] = [];
         Object.entries(keywordPairs).forEach(([pairKey, count]) => {
           const [k1, k2] = pairKey.split('|');
-          if (keywordSet.has(k1) && keywordSet.has(k2) && count >= 2) { // 2회 이상 공통 출현
+          if (keywordSet.has(k1) && keywordSet.has(k2) && count >= 1) { // 1회 이상 공통 출현으로 조건 완화
             const from = nodes.find(n => n.label === k1)?.id;
             const to = nodes.find(n => n.label === k2)?.id;
             if (from !== undefined && to !== undefined) {
-              edges.push({ from, to, value: count });
+              edges.push({ 
+                from, 
+                to, 
+                value: count,
+                title: `${k1} ↔ ${k2} (${count}회 동시 언급)`
+              });
             }
           }
         });
@@ -384,7 +389,7 @@ function KeyboardShortcutsHelp() {
 
 // 메인 App 컴포넌트
 export default function App() {
-  const { isDarkMode, toggleTheme, theme, colors, ThemeContext } = useThemeProvider();
+  const { isDarkMode, toggleTheme, changeThemeColor, theme, colors, ThemeContext } = useThemeProvider();
   const [tabValue, setTabValue] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -1024,7 +1029,7 @@ export default function App() {
   };
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleTheme, theme, colors }}>
+    <ThemeContext.Provider value={{ isDarkMode, toggleTheme, changeThemeColor, theme, colors }}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
       
@@ -1410,9 +1415,9 @@ export default function App() {
         <TabPanel value={tabValue} index={1}>
           <Typography variant="h5" gutterBottom>📈 인사이트</Typography>
           <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-            전체 {articles.length}개 기사 기준 분석 (필터링과 독립적)
+            필터링된 {filteredArticles.length}개 기사 기준 분석
           </Typography>
-          <InsightsCharts />
+          <InsightsCharts articles={filteredArticles} />
         </TabPanel>
 
         {/* 키워드 분석 탭 */}
@@ -1495,7 +1500,7 @@ export default function App() {
         {/* 테마/컬러 팔레트 탭 */}
         <TabPanel value={tabValue} index={5}>
           <Typography variant="h5" gutterBottom>🎨 테마 & 컬러 팔레트</Typography>
-          <ColorPalette />
+          <ColorPalette onColorChange={changeThemeColor} />
         </TabPanel>
       </Box>
       </ThemeProvider>

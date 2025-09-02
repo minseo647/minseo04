@@ -93,6 +93,7 @@ const colorPalette = {
 interface ThemeContextType {
   isDarkMode: boolean;
   toggleTheme: () => void;
+  changeThemeColor: (colorKey: string, color: string) => void;
   theme: Theme;
   colors: typeof colorPalette.light;
 }
@@ -115,6 +116,11 @@ export const useThemeProvider = () => {
     }
     // 시스템 다크모드 설정 감지
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  const [customColors, setCustomColors] = useState(() => {
+    const saved = localStorage.getItem('news-custom-colors');
+    return saved ? JSON.parse(saved) : {};
   });
 
   // 시스템 다크모드 변경 감지
@@ -141,8 +147,31 @@ export const useThemeProvider = () => {
     setIsDarkMode(prev => !prev);
   };
 
+  const changeThemeColor = (colorKey: string, color: string) => {
+    const newCustomColors = { ...customColors, [colorKey]: color };
+    setCustomColors(newCustomColors);
+    localStorage.setItem('news-custom-colors', JSON.stringify(newCustomColors));
+  };
+
   const mode = isDarkMode ? 'dark' : 'light';
-  const colors = colorPalette[mode];
+  const baseColors = colorPalette[mode];
+  
+  // 커스텀 색상 적용
+  const colors = {
+    ...baseColors,
+    primary: {
+      ...baseColors.primary,
+      main: customColors.primaryMain || baseColors.primary.main,
+    },
+    secondary: {
+      ...baseColors.secondary,
+      main: customColors.secondaryMain || baseColors.secondary.main,
+    },
+    accent: {
+      ...baseColors.accent,
+      main: customColors.accentMain || baseColors.accent.main,
+    }
+  };
 
   const theme = createTheme({
     palette: {
@@ -417,5 +446,5 @@ export const useThemeProvider = () => {
     },
   });
 
-  return { isDarkMode, toggleTheme, theme, colors, ThemeContext };
+  return { isDarkMode, toggleTheme, changeThemeColor, theme, colors, ThemeContext };
 };

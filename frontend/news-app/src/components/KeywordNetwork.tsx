@@ -39,27 +39,41 @@ export const KeywordNetwork: React.FC<KeywordNetworkProps> = ({ data }) => {
       ctx.clearRect(0, 0, width, height);
 
       // Draw edges
-      ctx.strokeStyle = '#ddd';
-      ctx.lineWidth = 1;
       data.edges.forEach(edge => {
         const source = nodes.find(n => n.id === edge.from);
         const target = nodes.find(n => n.id === edge.to);
         if (source && target) {
+          // Edge thickness based on value
+          const thickness = Math.max(1, Math.min(5, edge.value || 1));
+          
+          // Edge color with opacity based on value
+          const maxEdgeValue = Math.max(...data.edges.map(e => e.value || 1));
+          const opacity = 0.3 + (0.7 * (edge.value || 1)) / maxEdgeValue;
+          
+          ctx.strokeStyle = `rgba(25, 118, 210, ${opacity})`;
+          ctx.lineWidth = thickness;
+          
           ctx.beginPath();
           ctx.moveTo(source.x, source.y);
           ctx.lineTo(target.x, target.y);
           ctx.stroke();
           
-          // Draw edge label
-          const midX = (source.x + target.x) / 2;
-          const midY = (source.y + target.y) / 2;
-          
-          ctx.fillStyle = '#666';
-          ctx.font = '10px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillRect(midX - 10, midY - 7, 20, 14);
-          ctx.fillStyle = '#fff';
-          ctx.fillText(edge.value?.toString() || '1', midX, midY + 3);
+          // Draw edge label for significant connections
+          if (edge.value && edge.value >= 2) {
+            const midX = (source.x + target.x) / 2;
+            const midY = (source.y + target.y) / 2;
+            
+            // Background for label
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            const textWidth = ctx.measureText(edge.value.toString()).width;
+            ctx.fillRect(midX - textWidth/2 - 3, midY - 8, textWidth + 6, 16);
+            
+            // Label text
+            ctx.fillStyle = '#fff';
+            ctx.fillText(edge.value.toString(), midX, midY + 3);
+          }
         }
       });
 

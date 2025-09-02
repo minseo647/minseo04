@@ -47,29 +47,40 @@ export const KeywordCloud: React.FC<KeywordCloudProps> = ({ data, onError }) => 
         setLoading(true);
         setError('');
         
-        const params = new URLSearchParams({
-          width: '800',
-          height: '400',
-          background_color: 'white',
-          max_words: maxWords.toString(),
-          colormap: colormap,
-          auto_korean_font: autoKoreanFont.toString(),
-          filter_unrenderables: filterUnrenderables.toString()
-        });
-        
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/wordcloud?${params}`);
-        const result: WordCloudResult = await response.json();
-        
-        if (result.success) {
-          setImageUrl(`data:image/png;base64,${result.image_base64}`);
-          setWordCloudData(result);
-        } else {
-          const errorMsg = result.error || '워드클라우드 생성 실패';
-          setError(errorMsg);
-          onError?.(errorMsg);
+        // 백엔드 API 시도
+        try {
+          const params = new URLSearchParams({
+            width: '800',
+            height: '400',
+            background_color: 'white',
+            max_words: maxWords.toString(),
+            colormap: colormap,
+            auto_korean_font: autoKoreanFont.toString(),
+            filter_unrenderables: filterUnrenderables.toString()
+          });
+          
+          const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/wordcloud?${params}`);
+          
+          if (response.ok) {
+            const result: WordCloudResult = await response.json();
+            
+            if (result.success) {
+              setImageUrl(`data:image/png;base64,${result.image_base64}`);
+              setWordCloudData(result);
+              return;
+            }
+          }
+        } catch (backendErr) {
+          console.warn('Backend wordcloud failed, falling back to client-side:', backendErr);
         }
+        
+        // 백엔드 실패시 클라이언트 사이드 워드클라우드 생성
+        const clientSideResult = generateClientSideWordcloud(data, maxWords);
+        setWordCloudData(clientSideResult);
+        setImageUrl(''); // 클라이언트 사이드는 이미지 대신 HTML 렌더링
+        
       } catch (err) {
-        const errorMsg = '워드클라우드 API 연결 실패';
+        const errorMsg = '워드클라우드 생성 실패';
         setError(errorMsg);
         onError?.(errorMsg);
       } finally {
@@ -79,6 +90,27 @@ export const KeywordCloud: React.FC<KeywordCloudProps> = ({ data, onError }) => 
 
     generateWordcloud();
   }, [data, onError, maxWords, autoKoreanFont, filterUnrenderables, colormap]);
+
+  // 클라이언트 사이드 워드클라우드 생성
+  const generateClientSideWordcloud = (keywordData: { keyword: string; count: number }[], maxWords: number): WordCloudResult => {
+    const sortedData = keywordData.slice(0, maxWords);
+    const maxCount = Math.max(...sortedData.map(item => item.count));
+    
+    return {
+      success: true,
+      total_keywords: keywordData.length,
+      used_keywords: sortedData.length,
+      keyword_table: sortedData.map(item => ({ keyword: item.keyword, frequency: item.count })),
+      settings: {
+        max_words: maxWords,
+        colormap: colormap,
+        auto_korean_font: autoKoreanFont,
+        font_detected: true,
+        font_path: null,
+        filter_unrenderables: filterUnrenderables
+      }
+    };
+  };
 
   if (loading) {
     return (
@@ -165,7 +197,7 @@ export const KeywordCloud: React.FC<KeywordCloudProps> = ({ data, onError }) => 
         )}
       </Paper>
 
-      {/* WordCloud Image */}
+      {/* WordCloud Visualization */}
       <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'white', mb: 2 }}>
         <Box sx={{ 
           display: 'flex', 
@@ -177,6 +209,7 @@ export const KeywordCloud: React.FC<KeywordCloudProps> = ({ data, onError }) => 
           backgroundColor: '#f9f9f9'
         }}>
           {imageUrl ? (
+            // 백엔드에서 생성된 이미지
             <img 
               src={imageUrl} 
               alt="Keyword WordCloud" 
@@ -186,9 +219,50 @@ export const KeywordCloud: React.FC<KeywordCloudProps> = ({ data, onError }) => 
                 objectFit: 'contain'
               }}
             />
+          ) : wordCloudData?.keyword_table ? (
+            // 클라이언트 사이드 워드클라우드
+            <Box sx={{ 
+              display: 'flex', 
+              flexWrap: 'wrap', 
+              justifyContent: 'center', 
+              alignItems: 'center',
+              gap: 2,
+              p: 2,
+              maxHeight: 400,
+              overflow: 'hidden'
+            }}>
+              {wordCloudData.keyword_table.slice(0, maxWords).map((item, index) => {
+                const maxFreq = wordCloudData.keyword_table![0].frequency;
+                const normalizedSize = Math.max(0.8, (item.frequency / maxFreq) * 2.5);
+                const hue = (index * 137.5) % 360; // 골든 앵글로 색상 분산
+                const saturation = 60 + (item.frequency / maxFreq) * 40;
+                const lightness = 40 + (index % 2) * 20;
+                
+                return (
+                  <Box
+                    key={item.keyword}
+                    sx={{
+                      fontSize: `${normalizedSize}rem`,
+                      fontWeight: 'bold',
+                      color: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
+                      textShadow: '1px 1px 2px rgba(0,0,0,0.1)',
+                      cursor: 'default',
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        transform: 'scale(1.1)',
+                        filter: 'brightness(1.2)'
+                      }
+                    }}
+                    title={`${item.keyword}: ${item.frequency}회`}
+                  >
+                    {item.keyword}
+                  </Box>
+                );
+              })}
+            </Box>
           ) : (
             <Typography color="text.secondary">
-              워드클라우드를 불러올 수 없습니다.
+              워드클라우드 데이터가 없습니다.
             </Typography>
           )}
         </Box>

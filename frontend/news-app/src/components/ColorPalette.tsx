@@ -11,13 +11,18 @@ import {
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 
-export const ColorPalette: React.FC = () => {
+interface ColorPaletteProps {
+  onColorChange?: (colorKey: string, color: string) => void;
+}
+
+export const ColorPalette: React.FC<ColorPaletteProps> = ({ onColorChange }) => {
   const theme = useTheme();
 
-  const ColorCard = ({ title, colors, description }: {
+  const ColorCard = ({ title, colors, description, colorKey }: {
     title: string;
-    colors: { name: string; value: string; textColor?: string }[];
+    colors: { name: string; value: string; textColor?: string; colorKey?: string }[];
     description?: string;
+    colorKey?: string;
   }) => (
     <Card sx={{ mb: 3 }}>
       <CardContent>
@@ -44,6 +49,18 @@ export const ColorPalette: React.FC = () => {
                   border: '1px solid',
                   borderColor: 'divider',
                   position: 'relative',
+                  cursor: color.colorKey && onColorChange ? 'pointer' : 'default',
+                  transition: 'all 0.2s ease',
+                  '&:hover': color.colorKey && onColorChange ? {
+                    transform: 'scale(1.05)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    borderColor: 'primary.main'
+                  } : {},
+                }}
+                onClick={() => {
+                  if (color.colorKey && onColorChange) {
+                    onColorChange(color.colorKey, color.value);
+                  }
                 }}
               >
                 <Typography
@@ -66,6 +83,23 @@ export const ColorPalette: React.FC = () => {
                 >
                   {color.value}
                 </Typography>
+                {color.colorKey && onColorChange && (
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      position: 'absolute',
+                      top: 4,
+                      right: 4,
+                      backgroundColor: 'rgba(0,0,0,0.5)',
+                      color: 'white',
+                      padding: '1px 4px',
+                      borderRadius: 1,
+                      fontSize: '0.5rem'
+                    }}
+                  >
+                    클릭
+                  </Typography>
+                )}
               </Box>
             </Grid>
           ))}
@@ -75,13 +109,13 @@ export const ColorPalette: React.FC = () => {
   );
 
   const primaryColors = [
-    { name: 'Primary', value: theme.palette.primary.main, textColor: '#fff' },
+    { name: 'Current Primary', value: theme.palette.primary.main, textColor: '#fff' },
     { name: 'Primary Light', value: theme.palette.primary.light, textColor: '#fff' },
     { name: 'Primary Dark', value: theme.palette.primary.dark, textColor: '#fff' },
   ];
 
   const secondaryColors = [
-    { name: 'Secondary', value: theme.palette.secondary.main, textColor: '#fff' },
+    { name: 'Current Secondary', value: theme.palette.secondary.main, textColor: '#fff' },
     { name: 'Secondary Light', value: theme.palette.secondary.light, textColor: '#fff' },
     { name: 'Secondary Dark', value: theme.palette.secondary.dark, textColor: '#fff' },
   ];
@@ -98,10 +132,44 @@ export const ColorPalette: React.FC = () => {
 
   // Custom colors from our enhanced theme
   const customColors = [
-    { name: 'Accent', value: (theme.palette as any).accent?.main || '#059669', textColor: '#fff' },
+    { name: 'Current Accent', value: (theme.palette as any).accent?.main || '#059669', textColor: '#fff' },
     { name: 'Surface Primary', value: (theme.palette as any).surface?.primary || 'rgba(37, 99, 235, 0.08)' },
     { name: 'Surface Secondary', value: (theme.palette as any).surface?.secondary || 'rgba(220, 38, 38, 0.08)' },
     { name: 'Surface Accent', value: (theme.palette as any).surface?.accent || 'rgba(5, 150, 105, 0.08)' },
+  ];
+
+  // 클릭 가능한 색상 팔레트
+  const primaryPalette = [
+    { name: '파란색', value: '#2563eb', textColor: '#fff', colorKey: 'primaryMain' },
+    { name: '보라색', value: '#7c3aed', textColor: '#fff', colorKey: 'primaryMain' },
+    { name: '초록색', value: '#059669', textColor: '#fff', colorKey: 'primaryMain' },
+    { name: '빨간색', value: '#dc2626', textColor: '#fff', colorKey: 'primaryMain' },
+    { name: '주황색', value: '#ea580c', textColor: '#fff', colorKey: 'primaryMain' },
+    { name: '분홍색', value: '#db2777', textColor: '#fff', colorKey: 'primaryMain' },
+    { name: '청록색', value: '#0891b2', textColor: '#fff', colorKey: 'primaryMain' },
+    { name: '회색', value: '#374151', textColor: '#fff', colorKey: 'primaryMain' },
+  ];
+
+  const secondaryPalette = [
+    { name: '파란색', value: '#3b82f6', textColor: '#fff', colorKey: 'secondaryMain' },
+    { name: '보라색', value: '#8b5cf6', textColor: '#fff', colorKey: 'secondaryMain' },
+    { name: '초록색', value: '#10b981', textColor: '#fff', colorKey: 'secondaryMain' },
+    { name: '빨간색', value: '#ef4444', textColor: '#fff', colorKey: 'secondaryMain' },
+    { name: '주황색', value: '#f59e0b', textColor: '#fff', colorKey: 'secondaryMain' },
+    { name: '분홍색', value: '#ec4899', textColor: '#fff', colorKey: 'secondaryMain' },
+    { name: '청록색', value: '#06b6d4', textColor: '#fff', colorKey: 'secondaryMain' },
+    { name: '회색', value: '#6b7280', textColor: '#fff', colorKey: 'secondaryMain' },
+  ];
+
+  const accentPalette = [
+    { name: '에메랄드', value: '#059669', textColor: '#fff', colorKey: 'accentMain' },
+    { name: '청록색', value: '#0891b2', textColor: '#fff', colorKey: 'accentMain' },
+    { name: '라임', value: '#65a30d', textColor: '#fff', colorKey: 'accentMain' },
+    { name: '자주색', value: '#9333ea', textColor: '#fff', colorKey: 'accentMain' },
+    { name: '골드', value: '#d97706', textColor: '#fff', colorKey: 'accentMain' },
+    { name: '로즈', value: '#e11d48', textColor: '#fff', colorKey: 'accentMain' },
+    { name: '인디고', value: '#4338ca', textColor: '#fff', colorKey: 'accentMain' },
+    { name: '슬레이트', value: '#475569', textColor: '#fff', colorKey: 'accentMain' },
   ];
 
   return (
@@ -127,20 +195,38 @@ export const ColorPalette: React.FC = () => {
 
       <ColorCard
         title="🔥 Primary Colors"
-        description="주요 브랜드 색상으로 버튼, 링크 등에 사용됩니다."
+        description="현재 설정된 주요 브랜드 색상입니다."
         colors={primaryColors}
       />
 
       <ColorCard
+        title="🎯 Primary 색상 변경"
+        description="클릭하여 Primary 색상을 변경하세요."
+        colors={primaryPalette}
+      />
+
+      <ColorCard
         title="💖 Secondary Colors"
-        description="보조 색상으로 강조 요소에 사용됩니다."
+        description="현재 설정된 보조 색상입니다."
         colors={secondaryColors}
       />
 
       <ColorCard
+        title="🌈 Secondary 색상 변경"
+        description="클릭하여 Secondary 색상을 변경하세요."
+        colors={secondaryPalette}
+      />
+
+      <ColorCard
         title="🌟 Custom Colors"
-        description="사용자 정의 색상으로 특별한 UI 요소에 사용됩니다."
+        description="현재 설정된 사용자 정의 색상입니다."
         colors={customColors}
+      />
+
+      <ColorCard
+        title="✨ Accent 색상 변경"
+        description="클릭하여 Accent 색상을 변경하세요."
+        colors={accentPalette}
       />
 
       <ColorCard
